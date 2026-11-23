@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 7 · Human-in-the-loop and durable workflows</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0006-legacy-data-and-etl.html">← Lesson 6</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 7 · Stage 7 · about 60 minutes</p>
+<h1>Human-in-the-loop and durable workflows</h1>
+<p class="subtitle">The agent can now start returns, and a return is money leaving the company. Big ones need a manager's yes, the manager may take two days to give it, and in those two days the server will restart, someone will double-click, and the process will die at the worst moment. This lesson builds a workflow that waits for a real person and still refunds exactly once.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>A returns workflow in Postgres and TypeScript that stops at an approval gate, accepts a decision only from a real returns manager, picks up where it left off after days or after a crash, never creates a return twice (even when the legacy system has no idempotency key), lets only one of two simultaneous runs do the work, and expires on its own when nobody decides in time.</p>
+</div>
+
+<h2>1 · Some actions need a person</h2>
+
+<p>An EPAM job ad for an FDE lead puts it in one line: "Design for failure in the agent loop: retries, model fallbacks, cost limits and human-in-the-loop on consequential actions".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://careers.epam.com/en/vacancy/forward-deployed-engineer-chief-role-bltjgsnasgg42nfftvp_en">EPAM's Forward Deployed Engineer job ad</a>, as of November 2026.</span> The MCP specification says the same about tools: "there <strong>SHOULD</strong> always be a human in the loop with the ability to deny tool invocations".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools#user-interaction-model">MCP 2026-07-28, "Tools", User Interaction Model</a>. Under "Security Considerations", clients SHOULD also "Prompt for user confirmation on sensitive operations" and "Log tool usage for audit purposes".</span> Anthropic's guide to agents describes agents that "pause for human feedback at checkpoints or when encountering blockers".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic, "Building effective agents"</a>, section "Agents".</span></p>
+
+<p>Here is today's job. At the end of <a href="0005-mcp-and-legacy-integration.html">Lesson 5</a>, Acme asked for a tool that starts returns through the order system's <code>CreateReturn</code>. Acme's rule: a return of EUR 500 or more needs a yes from a returns manager first. Today there is one manager, Maria, who approves from a button in a chat app when there's time. That can be minutes or days.</p>
+
+<p>In the EU there is a legal side too. For AI systems the EU AI Act classes as high-risk, Article 14 requires that people can "effectively" oversee them, can "disregard, override or reverse" their output, and can stop them "through a 'stop' button or a similar procedure".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://artificialintelligenceact.eu/article/14/">EU AI Act, Article 14, "Human Oversight"</a>, paragraphs 1 and 4(d) and 4(e). Whether a system is high-risk is a legal question for the customer's lawyers, not for you.</span> A returns tool is probably not high-risk, but the customer's legal team may ask how your design would meet this anyway.</p>
+
+<h2>2 · "The user said yes in the chat" is not a gate</h2>
+
+<p>The first version most people build lets the agent ask "shall I go ahead?" in the conversation, and calls the reply an approval. For small, reversible actions by the person who asked, that is often fine: it is what a confirmation prompt is for. For Acme's rule it is not, for three reasons:</p>
+<ul>
+  <li><strong>The wrong person.</strong> The rule names returns managers. The person chatting with the support agent is a customer or a support colleague, not Maria.</li>
+  <li><strong>The wrong channel.</strong> A decision that arrives as text in the conversation can be written by the model itself, or by a prompt injection in an email the agent read. A real gate takes its decision from a place the model can't write to, and checks who made it against a list.</li>
+  <li><strong>No record.</strong> Six months later, someone asks who approved a EUR 3,150 return. "The chat said yes" is not an answer. A gate writes the request, the decision, the name and the time to the database.</li>
+</ul>
+
+<p>The request is part of the gate too. Maria decides from what the card says, so it must say what will happen, in numbers: the amount, the order, the customer, the order's total, the reason, and who asked.</p>
+
+<h2>3 · A workflow that can wait for days</h2>
+
+<p>You can't keep a function running for two days. Servers restart for deploys, and long-running requests time out. So the workflow has to save where it is, stop, and continue later from the saved state, possibly on a different machine. That is a durable workflow. Every serious framework does the same thing in its own words:</p>
+
+<table>
+  <thead><tr><th>Framework</th><th>Pause</th><th>Saved state</th><th>Resume</th></tr></thead>
+  <tbody>
+    <tr><td>Temporal</td><td>Wait for a Signal or a timer</td><td>The Event History</td><td>Replay the workflow code against the history</td></tr>
+    <tr><td>OpenAI Agents SDK</td><td>A tool marked <code>needsApproval</code></td><td>A serialized <code>RunState</code></td><td>Run again with the updated state</td></tr>
+    <tr><td>LangGraph</td><td><code>interrupt()</code></td><td>A checkpoint per step</td><td>Re-run the node that paused</td></tr>
+    <tr><td>Today's exercise</td><td><code>run()</code> returns <code>waiting_for_approval</code></td><td>A <code>steps</code> table in Postgres</td><td>The approval app calls <code>run()</code> again</td></tr>
+  </tbody>
+</table>
+
+<p>Temporal calls a workflow execution "fully recoverable after a failure": "If a failure occurs, the Workflow Execution picks up where the last recorded event occurred in the Event History."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.temporal.io/workflow-execution">Temporal docs, "Workflow Execution"</a>, including the section on <a href="https://docs.temporal.io/workflow-execution#replay">Replay</a>. A Signal is an "asynchronous write" into a running workflow (<a href="https://docs.temporal.io/encyclopedia/workflow-message-passing">"Workflow message passing"</a>).</span> The OpenAI Agents SDK "pauses the run, returns <code>interruptions</code>, and lets you resume later from the same <code>RunState</code>", and for long waits says: "Store serialized state in application-controlled storage, such as a server-side database."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.github.io/openai-agents-js/guides/human-in-the-loop/">OpenAI Agents SDK (JavaScript), "Human in the loop"</a>.</span> LangGraph's <code>interrupt</code> "saves the graph state using its persistence layer and waits indefinitely until you resume execution".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.langchain.com/oss/python/langgraph/interrupts">LangGraph docs, "Interrupts"</a>, and <a href="https://docs.langchain.com/oss/python/langgraph/checkpointers">"Checkpointers"</a>.</span></p>
+
+<p>At a customer you'll probably use one of these, or whatever they already run. Today you build the core yourself in one short file, because the frameworks all rest on the same four ideas, and when something goes wrong at 2 a.m. you need to know which one broke.</p>
+
+<div class="callout">
+  <p><strong>Where MCP fits.</strong> An MCP tool call can't stay open for two days. The 2026-07-28 revision moved long-running work into an official tasks extension: "Some operations — CI pipelines, batch processing, human approvals — take seconds, minutes, or longer. MCP Tasks let servers return a durable handle instead of blocking".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/extensions/tasks/overview">MCP Tasks extension, overview</a>. For quick questions to the user in the middle of a call, MCP has elicitation: "a standardized way for servers to request additional information from users through the client" (<a href="https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation">MCP 2026-07-28, "Elicitation"</a>).</span> So the tool starts the workflow and returns a handle at once. The workflow itself lives behind it, in a database.</p>
+</div>
+
+<h2>4 · Idea one: save every step, and replay</h2>
+
+<p>Write the workflow as plain code from top to bottom, and wrap each step in a helper. The helper looks in the <code>steps</code> table first. If the step already ran, it returns the saved result. If not, it runs the step and saves the result. Every time <code>run()</code> is called, the code starts again from the top, and finished steps cost nothing. That is replay.</p>
+
+<figure class="code"><figcaption>exercises/0007-approvals/solution.ts · step()</figcaption><pre><code><span class="c">/** Runs fn once per (workflow, step). Later calls get the saved result instead. */</span>
+async function step&lt;T&gt;(id: string, name: string, fn: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+  const saved = await db.query&lt;{ result: T }&gt;("select result from steps where workflow_id = $1 and step = $2", [id, name]);
+  if (saved.rows.length) return saved.rows[0].result;
+  const result = await fn();
+  <span class="c">// If the process dies between fn() and this insert, the step runs again on restart.</span>
+  <span class="c">// That is why every fn() with a side effect must be safe to run twice.</span>
+  await db.query("insert into steps (workflow_id, step, result, done_at) values ($1, $2, $3, $4)",
+    [id, name, JSON.stringify(result ?? null), now().toISOString()]);
+  return result;
+}</code></pre></figure>
+
+<p>Replay has one rule: the code must take the same path every time it runs. Temporal: "A Workflow Definition must be deterministic to support replay", so API calls, LLM calls and database queries go in Activities, which "execute outside the replay path and are automatically retried".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.temporal.io/workflow-definition#deterministic-constraints">Temporal docs, "Deterministic constraints"</a>.</span> In your version, that means anything that can differ between runs goes inside a step, so its saved result is reused: the order lookup, the clock when the request was made, a random id. If the workflow reads <code>now()</code> outside a step to decide which branch to take, a replay can take a different branch than the first run did.</p>
+
+<h2>5 · Idea two: the gap between "done" and "saved"</h2>
+
+<p>Look at the comment in <code>step()</code> again. <code>CreateReturn</code> succeeds, the process dies before the insert, and on restart the step runs again. Temporal describes exactly this case: "The Activity function completes successfully, but the Worker crashes just before it notifies the Temporal Service." Its answer: "Temporal recommends that Activities be idempotent."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.temporal.io/activity-definition#idempotency">Temporal docs, "Activity idempotency"</a>. It suggests "a combination of the Workflow Run ID and the Activity ID as an idempotency key".</span> LangGraph says the same about its interrupts, which re-run the node that paused: "side effects called before <code>interrupt</code> should (ideally) be idempotent", so "Place side effects after <code>interrupt</code> calls".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.langchain.com/oss/python/langgraph/interrupts">LangGraph docs, "Interrupts"</a>, section on side effects.</span></p>
+
+<p>No framework can close this gap for you. A system that retries delivers each step <em>at least</em> once. You get "exactly once" only by making the step safe to repeat. Three ways, best first:</p>
+<ol>
+  <li><strong>An idempotency key, if the system takes one.</strong> With Stripe, "you can safely repeat the request without risk of creating a second object", and "Retries with the same key return the saved response".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.stripe.com/api/idempotent_requests">Stripe API reference, "Idempotent requests"</a>. An IETF draft for a standard <a href="https://datatracker.ietf.org/doc/draft-ietf-httpapi-idempotency-key-header/">Idempotency-Key header</a> exists, but it is still an Internet-Draft, not an RFC.</span> Build the key from the workflow id and the step name, so a retry of the same step sends the same key.</li>
+  <li><strong>Look first, if it doesn't.</strong> Acme's <code>CreateReturn</code> has no key, but it stores a free-text reference on each return, and <code>FindReturn</code> looks one up. Write a reference only this step uses, and look for it before you create.</li>
+  <li><strong>A dedupe key for messages.</strong> The notifier drops a second message with the same key. Use the same workflow-plus-step recipe.</li>
+</ol>
+
+<figure class="code"><figcaption>exercises/0007-approvals/solution.ts · the side effects</figcaption><pre><code><span class="c">// CreateReturn has no idempotency key. So look first, with a reference only this step uses.</span>
+const ret = await step(id, "create_return", async () =&gt; {
+  const ref = `${id}:create_return`;
+  return (await orders.findReturn(ref)) ??
+    orders.createReturn({ order_id: order.order_id, amount: input.amount, external_ref: ref });
+});
+await step(id, "tell_customer_done", () =&gt; notifier.send(order.customer,
+  `Your return ${ret.return_id} for order ${order.order_id} is approved. EUR ${input.amount.toFixed(2)} will be refunded.`,
+  `${id}:tell_customer_done`));</code></pre></figure>
+
+<p>"Look first" has a weak spot: two workers can both look, both find nothing, and both create. That is the next idea.</p>
+
+<p>The same gap appears when you save to your database and then send a message: "if a service sends a message after committing the transaction there's no guarantee that it won't crash before sending the message." The transactional outbox pattern stores the message in the same transaction, and a separate process sends it later. Even then, "The Message relay might publish a message more than once", so the receiver still needs a dedupe key.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://microservices.io/patterns/data/transactional-outbox.html">microservices.io, "Pattern: Transactional outbox"</a>.</span></p>
+
+<h2>6 · Idea three: one worker at a time</h2>
+
+<p>Maria double-clicks Approve. The approval app calls <code>run()</code> twice, a few milliseconds apart. Both calls read the workflow, both see "waiting", both go on. That is a race condition, and checking the status first doesn't fix it, because both checks happen before either run writes anything.</p>
+
+<p>The fix is a claim that only one caller can win, done in one atomic statement. A single SQL <code>UPDATE</code> with a <code>WHERE</code> clause does that: the database lets one of the two updates match the row, and the other finds it already claimed.</p>
+
+<figure class="code"><figcaption>exercises/0007-approvals/solution.ts · the start of run()</figcaption><pre><code><span class="c">// Claim the workflow. Only one caller gets the row back; a double click gets nothing.</span>
+const claim = await db.query(
+  `update workflows set lease_until = $2, status = 'running'
+    where id = $1 and status not in ('done', 'rejected', 'expired')
+      and (lease_until is null or lease_until &lt; $3)
+    returning id`,
+  [id, new Date(t.getTime() + LEASE_SECONDS * 1000).toISOString(), t.toISOString()]);
+if (!claim.rows.length) {
+  const { status } = (await db.query&lt;{ status: Status }&gt;("select status from workflows where id = $1", [id])).rows[0];
+  return status; <span class="c">// finished, or "running" in another caller right now</span>
+}</code></pre></figure>
+
+<p>The claim is a lease, not a lock: it ends on its own after 30 seconds. If the worker that holds it crashes, nobody has to clean up. The next <code>run()</code> after the lease runs out simply claims it again. The price: a step that takes longer than the lease could overlap with another worker, so keep steps short, or renew the lease as you go. The OpenAI SDK warns about the same trap in its own words: "Concurrent or replayed submissions must not resume the same snapshot twice."</p>
+
+<p>With many workflows waiting, workers usually pick the next one from a queue table. Postgres's <code>FOR UPDATE SKIP LOCKED</code> exists for that: "any selected rows that cannot be immediately locked are skipped", which "can be used to avoid lock contention with multiple consumers accessing a queue-like table".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE">PostgreSQL 19, SELECT, "The Locking Clause"</a>.</span></p>
+
+<h2>7 · Idea four: nobody waits forever</h2>
+
+<p>Maria goes on holiday. Without a deadline, the customer waits forever and nobody notices. Anthropic recommends "stopping conditions (such as a maximum number of iterations) to maintain control" for agents, and the same goes for a gate.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic, "Building effective agents"</a>.</span> Acme's rule: no valid decision within 48 hours, and the request expires. The customer is told nothing was refunded, and a click that arrives later is ignored.</p>
+
+<p>Two details make the deadline reliable. Compute it from the saved request time, not from "now", so every replay gets the same answer. And something has to wake the workflow when the deadline passes, even if nobody clicks. In Temporal that is a durable timer: "even if your Worker or Temporal Service is down when the time period completes", it still fires, and workers "consume no additional resources while waiting".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.temporal.io/workflow-execution/timers-delays">Temporal docs, "Timers"</a>.</span> In your version, a scheduled job that calls <code>run()</code> on waiting workflows does the same job.</p>
+
+<h2>8 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0007-approvals/</code>. Read the top of <code>harness.ts</code>. It plays everything around your workflow: the order system (whose <code>CreateReturn</code> has no idempotency key), the notifier, the approval app, a clock the checks can move forward, and crashes. <code>start.ts</code> is the naive version:</p>
+
+<figure class="code"><figcaption>exercises/0007-approvals/start.ts · the deliberately naive workflow</figcaption><pre><code><span class="c">// "The agent already asked the user in the chat, so it's approved."</span>
+async function run(id: string): Promise&lt;Status&gt; {
+  const { input } = (await db.query&lt;{ input: ReturnInput }&gt;("select input from workflows where id = $1", [id])).rows[0];
+  const order = await orders.getOrder(input.order_id);
+  const ret = await orders.createReturn({ order_id: input.order_id, amount: input.amount, external_ref: id });
+  await notifier.send(order.customer, `Your return ${ret.return_id} for order ${order.order_id} is on its way.`);
+  await db.query("update workflows set status = 'done' where id = $1", [id]);
+  return "done";
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0007-approvals/start.ts</figcaption><pre><code>FAIL  Stops at the gate
+      EUR 1299 -&gt; done, 1 return(s) created, request none (want waiting_for_approval, 0, a request naming A-1001 and the amount); EUR 49 -&gt; done, 1 return(s), no approval asked (want done, 1, no approval)
+FAIL  A no means no
+      maria rejects -&gt; done, 2 return(s) created (want rejected, 0)
+FAIL  Only a real approver counts
+      support-agent approves -&gt; done; dana (not a returns manager) approves -&gt; done; 3 return(s) so far (want waiting_for_approval twice, 0)
+FAIL  Resumes where it stopped
+      maria approves -&gt; done, then run() again -&gt; done; 5 return(s), 2 message(s), order looked up again 2 time(s) (want done, done, 1, 1, 0: the lookup was saved before the pause)
+FAIL  A crash doesn't double the return
+      crash after CreateReturn, restart -&gt; done; 3 return(s), 1 message(s) (want done, 1, 1)
+FAIL  A double click doesn't either
+      two runs at once -&gt; done and done; 2 return(s) created, 3 message(s), then done (want 1 return, 1 message, then done)
+FAIL  Nobody waits forever
+      at 0 h done, at 47 h done, at 49 h done, late approval -&gt; done; 6 return(s), 4 message(s) to the customer (want waiting, waiting, expired, expired, 0, 1 saying it wasn't done)
+
+0/7 checks pass.</code></pre></figure>
+
+<p>Read check 4. One approval, two calls to <code>run()</code>, and the customer got five returns. In real money, that's a EUR 1,299 return paid five times, and nothing in the logs looks like an error.</p>
+
+<p>Now fix <code>start.ts</code>. The TODO list in the file follows the order of the checks. Give yourself 30 minutes before you open the solution.</p>
+<ol>
+  <li>At EUR 500 or more, write one approval request with a summary Maria can decide from, and return <code>waiting_for_approval</code>. Don't wait inside <code>run()</code>.</li>
+  <li>A "reject" from Maria ends the workflow as <code>rejected</code>.</li>
+  <li>Count only decisions made by someone in <code>APPROVERS</code>.</li>
+  <li>Save every step in a <code>steps</code> table with a <code>step()</code> helper. A finished workflow returns its status and does nothing.</li>
+  <li>Inside the <code>create_return</code> step, look for the return by its reference before creating it. Give every message a dedupe key.</li>
+  <li>Claim the workflow with an atomic <code>update … returning</code> and a 30-second lease.</li>
+  <li>After 48 hours with no valid decision: <code>expired</code>, tell the customer, ignore later clicks.</li>
+</ol>
+
+<p>Stuck on check 6, with both runs saying <code>done</code>? Your claim is probably a <code>select</code> followed by an <code>update</code>. Make it one <code>update</code> with the condition in its <code>where</code> clause, and look at whether a row came back.</p>
+
+<p>The full solution is in <code>solution.ts</code>. Its gate, after the claim and the order lookup:</p>
+
+<figure class="code"><figcaption>exercises/0007-approvals/solution.ts · the approval gate</figcaption><pre><code>const { requested_at } = (await db.query&lt;{ requested_at: Date }&gt;(
+  "select requested_at from approval_requests where workflow_id = $1", [id])).rows[0];
+const deadline = new Date(requested_at.getTime() + APPROVAL_TIMEOUT_HOURS * 3_600_000);
+
+<span class="c">// The first decision by a real approver, made before the deadline, wins. Everything else is noise.</span>
+const decision = (await db.query&lt;{ decision: "approve" | "reject"; decided_by: string }&gt;(
+  `select decision, decided_by from approval_decisions
+    where workflow_id = $1 and decided_by = any($2) and decided_at &lt;= $3
+    order by decided_at, id limit 1`,
+  [id, APPROVERS, deadline.toISOString()])).rows[0];
+
+if (!decision) {
+  if (now() &gt; deadline) {
+    await step(id, "tell_customer_expired", () =&gt; notifier.send(order.customer,
+      `We couldn't approve your return for order ${order.order_id} in time, so nothing was refunded. …`,
+      `${id}:tell_customer_expired`));
+    return finish(id, "expired");
+  }
+  await db.query("update workflows set status = 'waiting_for_approval', lease_until = null where id = $1", [id]);
+  return "waiting_for_approval";
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0007-approvals/solution.ts</figcaption><pre><code>PASS  Stops at the gate
+      EUR 1299 -&gt; waiting_for_approval, 0 return(s) created, request "Return EUR 1299.00 on order A-1001 (Brightwater Bikes, order total EUR 1299.00). Reason: Arrived damaged. Requested by support-agent." (want waiting_for_approval, 0, a request naming A-1001 and the amount); EUR 49 -&gt; done, 1 return(s), no approval asked (want done, 1, no approval)
+PASS  A no means no
+      maria rejects -&gt; rejected, 0 return(s) created (want rejected, 0)
+PASS  Only a real approver counts
+      support-agent approves -&gt; waiting_for_approval; dana (not a returns manager) approves -&gt; waiting_for_approval; 0 return(s) so far (want waiting_for_approval twice, 0)
+PASS  Resumes where it stopped
+      maria approves -&gt; done, then run() again -&gt; done; 1 return(s), 1 message(s), order looked up again 0 time(s) (want done, done, 1, 1, 0: the lookup was saved before the pause)
+PASS  A crash doesn't double the return
+      crash after CreateReturn, restart -&gt; done; 1 return(s), 1 message(s) (want done, 1, 1)
+PASS  A double click doesn't either
+      two runs at once -&gt; done and running; 1 return(s) created, 1 message(s), then done (want 1 return, 1 message, then done)
+PASS  Nobody waits forever
+      at 0 h waiting_for_approval, at 47 h waiting_for_approval, at 49 h expired, late approval -&gt; expired; 0 return(s), 1 message(s) to the customer (want waiting, waiting, expired, expired, 0, 1 saying it wasn't done)
+
+7/7 checks pass.</code></pre></figure>
+
+<p>Try one experiment before you move on. In a copy of <code>solution.ts</code>, make the <code>create_return</code> step call <code>orders.createReturn(…)</code> directly, without the <code>findReturn</code> look-up. Run it: only check 5 fails. Undo that, and make the claim always win instead: replace <code>(lease_until is null or lease_until &lt; $3)</code> with <code>($3::timestamptz is not null)</code>, which is always true. Now only check 6 fails. Each idea guards against one specific failure, and the checks show which.</p>
+
+<h2>9 · Which idea saves you?</h2>
+
+<p>Each card is something that will happen to a real workflow. Decide which of the four ideas stops it from doing harm.</p>
+
+<script type="application/json" data-sort="l7-defenses">
+{
+  "buckets": ["Saved steps", "Look first or dedupe key", "Lease", "Approval rules"],
+  "items": [
+    { "label": "The server restarts for a deploy while 40 workflows wait", "detail": "Every one of them is called again afterwards.", "bucket": 0,
+      "why": "Each workflow replays from the top and takes finished steps from the steps table. Nothing that already ran runs again, and nothing is lost (<a href=\"https://docs.temporal.io/workflow-execution#replay\">Temporal, Replay</a>)." },
+    { "label": "The process dies right after CreateReturn succeeded", "detail": "The step's result was never saved.", "bucket": 1,
+      "why": "On restart the step runs again, so it must be safe to repeat. With no idempotency key, look for the return by its reference before creating it (<a href=\"https://docs.temporal.io/activity-definition#idempotency\">Temporal, Activity idempotency</a>)." },
+    { "label": "Maria double-clicks Approve", "detail": "Two run() calls start a few milliseconds apart.", "bucket": 2,
+      "why": "Both would see \"waiting\" and both would go on. An atomic claim lets exactly one of them run; the other gets no row back and returns \"running\"." },
+    { "label": "The support agent writes an approve row for its own request", "detail": "Through a tool it was given by mistake.", "bucket": 3,
+      "why": "Only decisions by someone in APPROVERS count. The agent can ask, but it can never be the one who says yes." },
+    { "label": "Maria approves on day three", "detail": "The limit is 48 hours. The customer was already told it expired.", "bucket": 3,
+      "why": "The deadline is part of the rule: only decisions made before it count. An expired workflow stays expired, so the customer doesn't get a refund after being told there would be none." },
+    { "label": "The notifier call times out", "detail": "You don't know whether the message went out.", "bucket": 1,
+      "why": "Send it again with the same dedupe key, built from the workflow id and the step name. If the first one arrived, the notifier drops the second." },
+    { "label": "A worker crashes while it holds the claim", "detail": "No code is left to release it.", "bucket": 2,
+      "why": "That is why the claim is a lease with an end time. Thirty seconds later, the next run() can claim the workflow again." },
+    { "label": "A request is re-run after it was approved", "detail": "Would the order lookup and the approval request run again?", "bucket": 0,
+      "why": "Both are saved steps, so replay takes their results from the steps table. The approval request is written once, and the order system isn't asked again." },
+    { "label": "The model says \"the customer confirmed, so it's approved\"", "detail": "In the chat, for a EUR 2,400 return.", "bucket": 3,
+      "why": "The decision has to come from the approval app, by a named returns manager, not from text the model wrote. The MCP spec wants a human \"with the ability to deny tool invocations\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/server/tools#user-interaction-model\">MCP Tools</a>)." }
+  ]
+}
+</script>
+
+<h2>10 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l7-recall">
+{
+  "questions": [
+    { "q": "The agent says: \"The user said yes in the chat, so the EUR 1,299 return is approved.\" Why isn't that an approval gate?",
+      "options": ["Chat messages are never stored anywhere", "Approval needs a second model's vote", "The model decides, not an approver", "Users cannot type yes in chats"],
+      "answer": 2,
+      "why": "Acme's rule names returns managers, and a real gate takes its decision from a channel the model can't write to, then checks the name against a list. The MCP spec asks for a human \"with the ability to deny tool invocations\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/server/tools#user-interaction-model\">MCP Tools</a>)." },
+    { "q": "The process dies right after CreateReturn succeeded, before the step was saved. On restart, what should the step do?",
+      "options": ["Searches by its ref, creates only if missing", "Creates the return again, because nothing was saved", "Skips the step, because the call already succeeded", "Waits for a manager to approve it again"],
+      "answer": 0,
+      "why": "The step will run again, and the code can't know whether the first call worked. With no idempotency key, look for the return by a reference unique to this step first. Temporal describes this exact crash and recommends idempotent Activities (<a href=\"https://docs.temporal.io/activity-definition#idempotency\">Temporal docs</a>)." },
+    { "q": "Why must workflow code be deterministic when it is resumed by replay?",
+      "options": ["So the workflow runs faster on every worker", "Because Postgres refuses to store random values twice", "Because the approver must see identical summary text", "So replay makes the same calls in order"],
+      "answer": 3,
+      "why": "Replay runs the code from the top and matches each step to its saved result. Temporal: the code must make \"the same Workflow API calls in the same sequence, given the same input\" (<a href=\"https://docs.temporal.io/workflow-definition#deterministic-constraints\">Temporal docs</a>). So clock reads and API calls go inside steps." },
+    { "q": "Two run() calls start at the same moment after a double click. What stops both creating a return?",
+      "options": ["Checking the status before doing any work", "An atomic claim that only one wins", "A sleep of one second between runs", "Asking the manager not to click twice"],
+      "answer": 1,
+      "why": "A status check is a race: both calls read \"waiting\" before either writes. One UPDATE with the condition in its WHERE clause lets the database pick a single winner, and the loser gets no row back." },
+    { "q": "Why does the claim on a workflow expire by itself instead of lasting until released?",
+      "options": ["Postgres deletes old rows every few minutes", "Managers need the row unlocked to click", "A crashed worker never releases its claim", "Leases expire so the workflow runs faster"],
+      "answer": 2,
+      "why": "A worker that crashes can't run the code that releases its claim. A lease ends on its own, so the next run() can pick the workflow up. Keep steps shorter than the lease, or renew it." },
+    { "q": "Why does every notifier call get a dedupe key built from the workflow id and step name?",
+      "options": ["So the message is encrypted on the way", "So a retried send reaches the customer once", "So the customer can reply to the message", "So the notifier sends it faster than usual"],
+      "answer": 1,
+      "why": "A step can run twice after a crash, and the notifier drops a second message with the same key. Stripe's idempotency keys work the same way: retries \"return the saved response\" (<a href=\"https://docs.stripe.com/api/idempotent_requests\">Stripe API</a>)." },
+    { "q": "From Lesson 6: COPY with HEADER MATCH says the ledger's first column doesn't match, though it looks right. Likely cause?",
+      "options": ["A BOM before the first header", "A semicolon inside a quoted field", "Amounts written with a decimal comma", "Dates written in US month order"],
+      "answer": 0,
+      "why": "Three invisible bytes, EF BB BF, are glued to the first column name. \"Some recipients of UTF-8 encoded data do not expect a BOM\" (<a href=\"https://www.unicode.org/faq/utf_bom.html#bom5\">Unicode FAQ</a>). TextDecoder(\"utf-8\") drops it by default." },
+    { "q": "From Lesson 5: which of these calls is safe to retry after a timeout?",
+      "options": ["CreateReturn, with no key", "Any POST SOAP call", "Every call, three times", "GetOrder, which only reads"],
+      "answer": 3,
+      "why": "Reading an order twice changes nothing, so it is idempotent. \"APIs with side effects aren't safe to retry unless they provide idempotency\" (<a href=\"https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/\">Amazon</a>), and SOAP sends every non-read as POST, so the method tells you nothing." }
+  ]
+}
+</script>
+
+<h2>11 · Design Maria's approval card</h2>
+
+<p>Maria will see your approval request as a card in a chat app, between other messages, probably on a phone, and will give it about ten seconds. Write the card for the EUR 1,299 return on order A-1001. It saves as you type.</p>
+
+<script type="application/json" data-practice="l7-approval-card">
+{
+  "title": "Approval card: return on order A-1001",
+  "maxWords": 120,
+  "fields": [
+    { "key": "headline", "label": "First line", "hint": "What Maria is being asked to approve, in one line." },
+    { "key": "facts", "label": "The facts", "hint": "From the order system and the request: what Maria needs to decide." },
+    { "key": "buttons", "label": "The buttons", "hint": "What each one does, exactly." },
+    { "key": "deadline", "label": "Deadline", "hint": "By when, and what happens if nobody decides." }
+  ],
+  "checks": [
+    "The first line has the amount with its currency, the order id and the customer",
+    "It shows the order's total, so Maria can see this return is the whole order",
+    "It says who asked for the return and the reason they gave",
+    "Approve and Reject each say what happens next: a refund of EUR 1,299.00, or a message to the customer",
+    "It gives the deadline as a date and time, and says the request expires if nobody decides",
+    "It states facts from the order system, not the agent's opinion on whether to approve",
+    "120 words or fewer"
+  ]
+}
+</script>
+
+<p>The last check matters most. If the card says "AI recommends: approve", many people will click approve without reading the rest, and the human in the loop becomes a rubber stamp. Give Maria the facts, and leave the decision to the person.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 20 minutes</p>
+  <p><a href="https://docs.temporal.io/workflow-execution">Temporal's "Workflow Execution" page</a>, then the <a href="https://docs.temporal.io/activity-definition#idempotency">section on Activity idempotency</a>. Even if your customer never uses Temporal, these pages explain replay, determinism and the crash gap more clearly than anything else. Then read <a href="https://stripe.com/blog/idempotency">Stripe's engineering post on idempotency</a>, which shows the same problem from the side of the system being called.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next (planned): <strong>Lesson 8, evals on customer data</strong> (Stage 10). The agent now reads orders, loads data and starts returns. How do you show the customer that it does these things correctly, with their data, before they trust it with more? Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

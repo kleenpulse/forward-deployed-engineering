@@ -1,0 +1,3 @@
+# Exercise data files are byte-exact customer exports (encodings, BOMs, CRLF line ends).
+# Git must never convert them.
+exercises/*/data/** -text

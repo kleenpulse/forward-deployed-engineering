@@ -1,0 +1,15 @@
+OrderId;OrderDate;CustNm;StatusCd;TotAmt;CurrCd;Notes
+A-1001;02.10.2026;Brightwater Bikes;SHPD;1.299,00;EUR;
+A-1002;03.10.2026;Halden Dental Supply;BCKORD;482,50;EUR;Part shipment
+A-1003;03.10.2026;Kestrel Garden Tools;OPEN;79,99;GBP;
+A-1004;06.10.2026;Larchmont Print Co.;SHPD;3.150,00;EUR;
+A-1004;06.10.2026;Larchmont Print Co.;SHPD;3.150,00;EUR;
+A-1005;07.10.2026;Ostrava Coffee Roasters;CNCL;210,00;EUR;Cancelled by customer
+A-1006;09.10.2026;Müller Werkzeuge GmbH;SHPD;845,10;EUR;
+A-1007;10.10.2026;"Café Lumière; Lyon";SHPD;66,60;EUR;
+A-1008;14.10.2026;Søndergaard Design;SHPD;2.400,00;EUR;"Deliver to the rear door.
+Call before arrival."
+A-1009;21.10.2026;Kestrel Garden Tools;SHPD;155,20;GBP;Sample pack
+A-1010;28.10.2026;Halden Dental Supply;SHPD;n/a;EUR;Price on request
+A-1012;30.10.2026;Brightwater Bikes;OPEN;12,90;EUR;
+12 rows exported;;;;;;

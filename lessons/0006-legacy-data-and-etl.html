@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 6 · Legacy data and ETL</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0005-mcp-and-legacy-integration.html">← Lesson 5</a>
+  <a href="0007-human-in-the-loop-workflows.html">Lesson 7 →</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 6 · Stage 3 · about 60 minutes</p>
+<h1>Legacy data and ETL</h1>
+<p class="subtitle">Finance says October doesn't add up. You get two exports of the same orders, one from a 2009 order system and one from an Excel ledger, and they disagree. This lesson loads both without losing or inventing a single row, then works out which differences are real.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>A small load-and-reconcile pipeline in Postgres. It reads a semicolon-separated Windows-1252 export and a UTF-8 Excel report, keeps every name and every cent exact, puts each bad row in a rejects table with a reason, gives the same result when you run it twice, and ends with a report of the three orders finance actually needs to look at. You'll also have a short findings note you could send to the customer.</p>
+</div>
+
+<h2>1 · Data never arrives clean</h2>
+
+<p>Palantir's job ads for Forward Deployed Software Engineers list "building data pipelines and operational workflows" right next to deploying AI agents, and say FDSEs own the solution "from high-level system design and prototyping to application development and data integration".<span class="sn-ref"></span><span class="sidenote numbered">Palantir FDSE job ads on Lever, as of November 2026: <a href="https://jobs.lever.co/palantir/be4ab5cb-9caa-4c2a-97b9-c73805fca4fc">ad 1</a> and <a href="https://jobs.lever.co/palantir/29630180-0f10-4826-801f-12e226d3c7f1">ad 2</a>.</span> The agent from <a href="0005-mcp-and-legacy-integration.html">Lesson 5</a> could read one order at a time. Most AI work also needs the data in bulk: to search it, to measure the agent against it, or simply to find out whether it can be trusted.</p>
+
+<p>Here is today's job. Acme's finance lead says October's numbers don't add up. You get two files:</p>
+<ul>
+  <li><code>orders.csv</code>, from the order system's "Export to CSV" button. Its manual says: semicolons between fields, text in Windows-1252, dates as DD.MM.YYYY, amounts like <code>1.299,00</code>.</li>
+  <li><code>ledger.csv</code>, an Excel report from accounting, saved as CSV. One row per invoice. The "Order Ref" column is typed by hand. Dates are US style, MM/DD/YYYY, and amounts look like <code>1,299.00</code>.</li>
+</ul>
+<p>Finance's rule: every order that isn't cancelled should have an invoice for the same amount. Your job is to find where that isn't true, and to be sure that every difference you report is in the data, not in your code.</p>
+
+<h2>2 · ETL, ELT, and landing raw first</h2>
+
+<p>ETL is "the process of combining data from multiple sources into a large, central repository called a data warehouse": extract, transform, load. ELT "reverses the order of operations".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://aws.amazon.com/what-is/etl/">AWS, "What is ETL?"</a>, including the section on ETL vs ELT.</span> Google puts the difference simply: "In ELT, data is loaded into the target system in its raw format and then transformed."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://cloud.google.com/learn/what-is-etl">Google Cloud, "What is ETL?"</a></span></p>
+
+<p>You'll use the ELT shape today, for three practical reasons:</p>
+<ul>
+  <li><strong>You keep the evidence.</strong> A staging table holds each file exactly as it arrived, every column as text. When finance asks "where did this number come from?", you can show the raw row.</li>
+  <li><strong>SQL is a good cleaning tool.</strong> Validating, converting and comparing whole columns is what a database does best.</li>
+  <li><strong>You can rerun the transform.</strong> When you find a new problem, fix the SQL and run it again over the same raw data. You don't need to ask for a new export.</li>
+</ul>
+
+<h2>3 · Five ways a file lies</h2>
+
+<p>Both files open fine. The trouble is that they open fine in the wrong way too, and nothing tells you. Open them in a text editor, not in Excel, and look for these five things.</p>
+
+<h3>Separators and quotes</h3>
+
+<p>CSV has no real standard. RFC 4180 is the nearest thing, and it says so itself: "there is no formal specification in existence, which allows for a wide variety of interpretations of CSV files", and the RFC "does not specify an Internet standard of any kind". Its rules: "Fields containing line breaks (CRLF), double quotes, and commas should be enclosed in double-quotes", and a double quote inside a field is written twice.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.rfc-editor.org/rfc/rfc4180#section-2">RFC 4180, section 2</a>, rules 6 and 7, and the status section.</span> The Postgres manual is blunter: "Many programs produce strange and occasionally perverse CSV files, so the file format is more a convention than a standard."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/sql-copy.html#SQL-COPY-CSV-FORMAT">PostgreSQL 19, COPY, "CSV Format"</a>.</span></p>
+
+<p>The order export uses semicolons as its delimiter. One customer is <code>"Café Lumière; Lyon"</code>, with a semicolon inside quotes. One note has a line break inside quotes. So <code>line.split(";")</code> cuts the customer in two, and <code>text.split("\r\n")</code> turns the second half of a note into a fake order. The ledger has the same problem with commas: <code>"1,299.00"</code>. Never split CSV by hand. Use a real parser, such as Postgres's <code>COPY</code>.</p>
+
+<h3>Encoding and the BOM</h3>
+
+<p>A file is bytes. The character encoding is the rule that turns bytes into letters, and the file doesn't say which rule it used. In Windows-1252, ü is one byte, <code>FC</code>. In UTF-8 it is two, <code>C3 BC</code>. Decode with the wrong rule and you get mojibake:</p>
+
+<figure class="code"><figcaption>bun, the same name decoded the wrong way round</figcaption><pre><code>const utf8 = new TextEncoder().encode("Müller");             <span class="c">// 4D C3 BC 6C 6C 65 72</span>
+new TextDecoder("windows-1252").decode(utf8);                <span class="c">// "MÃ¼ller"</span>
+
+const win1252 = new Uint8Array([0x4d, 0xfc, 0x6c, 0x6c, 0x65, 0x72]);
+new TextDecoder("utf-8").decode(win1252);                    <span class="c">// "M�ller"</span></code></pre></figure>
+
+<p>Neither line throws an error. The second one replaces the byte it can't read with �, and the original letter is gone for good. Labels don't always help either: in the web's Encoding Standard, "“latin1” and “ascii” are just labels for windows-1252".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://encoding.spec.whatwg.org/#note-latin1-ascii">WHATWG Encoding Standard</a>. It adds: "Software that does not follow this standard does not always give the same answers."</span> So ask, or read the manual, and then check a few names you know.</p>
+
+<p>The ledger starts with three extra bytes, <code>EF BB BF</code>: a byte order mark. "An initial BOM is only used as a signature", and "some recipients of UTF-8 encoded data do not expect a BOM".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.unicode.org/faq/utf_bom.html#bom5">Unicode, "UTF-8, UTF-16, UTF-32 &amp; BOM" FAQ</a>.</span> A reader that doesn't expect it glues it to the first column name, so <code>"Invoice No"</code> silently becomes a different string. <code>TextDecoder("utf-8")</code> drops it by default. Postgres's <code>COPY … HEADER MATCH</code> would catch it, because the header line "must contain column names that exactly match the table's columns".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/sql-copy.html#SQL-COPY-PARAMS-HEADER">PostgreSQL 19, COPY, HEADER</a>. COPY also has an <a href="https://www.postgresql.org/docs/current/sql-copy.html#SQL-COPY-PARAMS-ENCODING">ENCODING option</a>; in this exercise you decode in TypeScript instead.</span></p>
+
+<h3>Numbers</h3>
+
+<p><code>parseFloat("1.299,00".replace(",", "."))</code> returns <code>1.299</code>. A thousand times too small, and no error. Even with the right digits, the type matters. Most languages, and Postgres's <code>double precision</code>, use binary floating point, so <code>0.1 + 0.2</code> is <code>0.30000000000000004</code>. Postgres calls these types inexact: "some values cannot be converted exactly to the internal format and are stored as approximations". For money it says: "If you require exact storage and calculations (such as for monetary amounts), use the <code>numeric</code> type instead."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/datatype-numeric.html#DATATYPE-FLOAT">PostgreSQL 19, "Floating-Point Types"</a> and <a href="https://www.postgresql.org/docs/current/datatype-numeric.html#DATATYPE-NUMERIC-DECIMAL">"Arbitrary Precision Numbers"</a>. Postgres also has a <code>money</code> type, but its output "is locale-sensitive", so loading it into a database with a different setting "might not work" (<a href="https://www.postgresql.org/docs/current/datatype-money.html">"Monetary Types"</a>).</span> In Postgres, <code>0.1::numeric + 0.2::numeric</code> is exactly <code>0.3</code>. Store amounts as <code>numeric(12,2)</code>, and keep the currency in its own column.</p>
+
+<h3>Dates</h3>
+
+<p>The order system writes 3 October 2026 as <code>03.10.2026</code>. In Bun, <code>new Date("03.10.2026")</code> returns 10 March 2026. That isn't a Bun bug. JavaScript only defines one date string format, adapted from ISO 8601 (<code>2026-10-03</code>). For anything else, "the function may fall back to any implementation-specific heuristics".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-date.parse">ECMAScript specification, Date.parse</a> and <a href="https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-date-time-string-format">"Date Time String Format"</a>.</span> The same code reads the US-style ledger correctly, so half your dates are right and half are wrong, with no error. RFC 3339 gives the reason: a date like "10/11/1996" "is completely unsuitable for global interchange because it is interpreted differently in different countries".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.rfc-editor.org/rfc/rfc3339#section-5.2">RFC 3339, section 5.2</a>.</span></p>
+
+<p>Parse each source with the format it documents: <code>to_date("OrderDate", 'DD.MM.YYYY')</code> and <code>to_date("Invoice Date", 'MM/DD/YYYY')</code>. Store a <code>date</code>, and write <code>2026-10-03</code> whenever you show one to people.</p>
+
+<h3>Excel was there first</h3>
+
+<p>The ledger went through Excel, and Excel changes data as it opens it. It stores dates as serial numbers: "if you enter July 5, 2011, Excel converts the date to the serial number 40729". There are two date systems, and the same date is 1,462 days apart between them.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://support.microsoft.com/en-us/office/date-systems-in-excel-e7fe7167-48a9-4b96-bb53-5612a800b487">Microsoft, "Date systems in Excel"</a>. The 1904 system "is the default date system in earlier versions of Excel for Mac".</span> And "Microsoft Excel incorrectly assumes that the year 1900 is a leap year", on purpose, to stay compatible with Lotus 1-2-3.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://learn.microsoft.com/en-us/troubleshoot/microsoft-365-apps/excel/wrongly-assumes-1900-is-leap-year">Microsoft Learn, on Excel and the year 1900</a>.</span> So a column of five-digit numbers in an export may be dates.</p>
+
+<p>Excel also changes text that looks like something else. A 2016 study found that Excel, "when used with default settings", turned gene names such as SEPT2 into dates like "2-Sep", and that 19.6% of published papers with gene lists in Excel files had these errors.<span class="sn-ref"></span><span class="sidenote numbered">Ziemann et al., <a href="https://genomebiology.biomedcentral.com/articles/10.1186/s13059-016-1044-7">Genome Biology, 2016</a>.</span> In 2020 the committee that names human genes renamed the affected genes instead: "SEPT1 is now SEPTIN1".<span class="sn-ref"></span><span class="sidenote numbered">The HGNC's <a href="https://pmc.ncbi.nlm.nih.gov/articles/PMC7494048/">2020 gene naming guidelines</a>.</span> That is why you open customer files in a text editor, and why order ids like <code>A-1001</code> stay text.</p>
+
+<h2>4 · Validate, then cast. Reject, never drop</h2>
+
+<p>The order export has one row with the amount <code>n/a</code>. Cast it in SQL and the whole statement fails:</p>
+
+<figure class="code"><figcaption>PGlite</figcaption><pre><code>select 'n/a'::numeric;
+<span class="c">-- ERROR: invalid input syntax for type numeric: "n/a"</span></code></pre></figure>
+
+<p>One bad row stops the load. The easy fix is worse. Since Postgres 17, COPY has an <code>ON_ERROR</code> option, and with <code>ignore</code> a bad row is discarded and the load goes on. You get "a NOTICE message … containing the count of rows that were ignored", and nothing else.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/sql-copy.html#SQL-COPY-PARAMS-ON-ERROR">PostgreSQL 19, COPY, ON_ERROR</a>. A <a href="https://www.postgresql.org/docs/current/sql-copy.html#SQL-COPY-PARAMS-REJECT-LIMIT">REJECT_LIMIT</a> makes COPY fail after too many errors, "even with ON_ERROR set to ignore".</span> The row with <code>n/a</code> is an order finance cares about. Dropping it means the totals are wrong and nobody can say why.</p>
+
+<p>So do it in two steps:</p>
+<ol>
+  <li><strong>Validate the text.</strong> Check every column against the format the source documents, with a regular expression: an order id is <code>^A-[0-9]{4}$</code>, an order amount is <code>^[0-9]{1,3}(\.[0-9]{3})*,[0-9]{2}$</code>. Give each failing row one plain reason.</li>
+  <li><strong>Cast only the rows that passed.</strong> The others go to a <code>rejects</code> table with the source, the raw row and the reason.</li>
+</ol>
+
+<p>Then check the sum: every input row must end up loaded, folded as an exact duplicate, or rejected. Today the order export has 13 rows after the header (12 orders and a footer line), and 10 + 1 + 2 = 13. If the sum doesn't add up, a row went missing inside your code. This is also how tools like dbt test data. A data test is a query for rows that break a rule: "If the data test returns zero failing rows, it passes". dbt ships four of them, "<code>unique</code>, <code>not_null</code>, <code>accepted_values</code>, and <code>relationships</code>".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.getdbt.com/docs/build/data-tests">dbt docs, "Data tests"</a>.</span> You'll write the same ideas in plain SQL.</p>
+
+<h2>5 · Loads you can run twice</h2>
+
+<p>You will run the load again: after a fix, after a new export, by accident. A load that appends rows doubles every total the second time. Two ways to make it safe:</p>
+
+<table>
+  <thead><tr><th></th><th>Replace everything</th><th>Upsert</th></tr></thead>
+  <tbody>
+    <tr><td>How</td><td>In one transaction: empty the tables, load the files again</td><td><code>INSERT … ON CONFLICT (order_id) DO UPDATE</code></td></tr>
+    <tr><td>Good for</td><td>Full exports, like today's</td><td>Exports that only hold new and changed rows</td></tr>
+    <tr><td>Watch out for</td><td>Very large tables</td><td>Rows deleted at the source stay in your table</td></tr>
+  </tbody>
+</table>
+
+<p>Postgres says <code>ON CONFLICT DO UPDATE</code> "guarantees an atomic INSERT or UPDATE outcome", and that "rows proposed for insertion should not duplicate each other".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/sql-insert.html#SQL-ON-CONFLICT">PostgreSQL 19, INSERT, "ON CONFLICT Clause"</a>.</span> Either way, give the clean table a primary key, so a duplicate fails loudly instead of slipping in. The order export lists A-1004 twice, identical in every field. Folding exact copies with <code>select distinct</code> is safe. Two <em>different</em> rows with the same id are a question for the customer, and the primary key makes sure you hear about it.</p>
+
+<p>The transaction matters too. While the load runs, anyone reading the tables sees the old data or the new data, never half of each.</p>
+
+<h2>6 · Reconcile</h2>
+
+<p>Reconciliation is checking that two sources agree and listing every difference. Three decisions make it work:</p>
+<ul>
+  <li><strong>Pick the grain.</strong> The orders file has one row per order. The ledger has one row per invoice, and an order could have two invoices. Compare at the grain both share: sum the invoices per order first.</li>
+  <li><strong>Use a full outer join.</strong> An inner join only keeps orders that appear on both sides, which hides exactly the rows you're looking for. A full outer join keeps everything and fills the missing side with nulls.</li>
+  <li><strong>Get the business rules from people.</strong> "Cancelled orders never get an invoice" is not in either file. Finance told you. Without it, A-1005 looks like a missing invoice.</li>
+</ul>
+
+<p>Each order id then gets one of four verdicts: <code>matched</code>, <code>amount_differs</code>, <code>only_in_orders</code> or <code>only_in_ledger</code>. Compare on ids and amounts, not names. The ledger writes <code>HALDEN DENTAL SUPPLY</code> and <code>Café Lumière</code>, which are the same customers spelled differently, not money problems.</p>
+
+<h2>7 · When the data is a PDF</h2>
+
+<p>Sometimes the only export is a PDF report. Be careful: "a PDF file does not contain anything that resembles paragraphs, sentences or even words. When it comes to text, a PDF file is only aware of the characters and their placement."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://pdfminersix.readthedocs.io/en/latest/topic/converting_pdf_to_text.html">pdfminer.six docs, on converting a PDF to text</a>.</span> Table extractors like pdfplumber guess the table from lines "explicitly defined and/or … implied by the alignment of words on the page", and work "best on machine-generated, rather than scanned, PDFs".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/jsvine/pdfplumber#extracting-tables">pdfplumber, "Extracting tables"</a>.</span> A scanned page is a picture, and needs OCR first. So before you parse a PDF, ask whether the system that printed it can export the data behind it. Whatever you extract still goes through the same staging, validation and rejects as a CSV.</p>
+
+<h2>8 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0006-etl/</code>. Read the comment at the top of <code>harness.ts</code>: it gives the manual's notes and finance's rules. Then open both files in <code>data/</code> in a text editor. <code>start.ts</code> is the naive pipeline, and its loader looks reasonable:</p>
+
+<figure class="code"><figcaption>exercises/0006-etl/start.ts · the deliberately naive loader</figcaption><pre><code><span class="c">// Every file is UTF-8, right?</span>
+const orders = new TextDecoder().decode(await readData("orders.csv"));
+for (const line of orders.split("\r\n").slice(1)) {
+  if (!line.trim()) continue;
+  const [orderId, date, customer, status, amount, currency] = line.split(";");
+  await db.query("insert into orders values ($1, $2, $3, $4, $5, $6)",
+    [orderId, toDate(date), customer, status, parseFloat(amount?.replace(",", ".") ?? ""), currency]);
+}</code></pre></figure>
+
+<p>It runs without one error. Then the checks look at what it loaded:</p>
+
+<figure class="code"><figcaption>bun exercises/0006-etl/start.ts</figcaption><pre><code>FAIL  Every row is loaded or rejected
+      orders has 13 distinct order ids (want 10); not order ids: "Call before arrival.\"", "12 rows exported"; A-1010 was loaded, but its amount is "n/a"; A-1010 not in rejects (want it rejected, with a reason)
+FAIL  Text survives the trip
+      orders A-1006: "M�ller Werkzeuge GmbH" (want "Müller Werkzeuge GmbH"); orders A-1007: "\"Caf� Lumi�re" (want "Café Lumière; Lyon"); orders A-1008: "S�ndergaard Design" (want "Søndergaard Design"); invoices A-1006: "Müller Werkzeuge GmbH"
+FAIL  Money is exact
+      total types: double precision, double precision (want numeric); orders {"":"NaN","66,60":"NaN","EUR":"NaN","GBP":"235.19","null":"NaN"} (want EUR 8466.10, GBP 235.19); invoices {"105.00\"":"NaN","299.00\"":"NaN","400.00\"":"NaN","EUR":"1505.50","GBP":"79.99"} (want EUR 8309.50, GBP 79.99)
+FAIL  Dates mean the same day
+      types: date, date (want date); A-1002 ordered 2026-03-10 (want 2026-10-03); A-1008 ordered empty (want 2026-10-14); A-1002 invoiced no row (want 2026-10-03); A-1007 invoiced 2026-10-12
+FAIL  Keys line up
+      invoices point at 9 order ids; unrecognised: "A1003", "a-1002 " (want 9: A-1001 A-1002 A-1003 A-1004 A-1006 A-1007 A-1008 A-1011 A-1012)
+FAIL  Loading twice changes nothing
+      rows after 1st load {"orders":14,"invoices":9,"rejects":0}, after 2nd {"orders":28,"invoices":18,"rejects":0}; duplicate order ids: A-1004 x4, 12 rows exported x2, A-1001 x2, A-1002 x2 and 9 more
+FAIL  The report finds the real differences
+      A-1001 amount_differs (want matched); A-1002 missing (want matched); A-1003 missing (want matched); A-1007 amount_differs (want matched); A-1008 amount_differs (want matched)
+
+0/7 checks pass.</code></pre></figure>
+
+<p>Read the third check closely. A currency column now holds <code>"66,60"</code>, because the semicolon inside Café Lumière's name shifted every field after it one place to the right. And look at what the naive report says: A-1001 has an amount difference. It doesn't. Hand that report to finance and they'll spend a day chasing a bug in your code.</p>
+
+<p>Now fix <code>start.ts</code>. The TODO list in the file follows the order of the checks. Give yourself 30 minutes before you open the solution.</p>
+<ol>
+  <li>Decode each file with its real encoding, then <code>COPY</code> it into a staging table with text columns named like the file's header.</li>
+  <li>Validate in SQL before you cast. Bad rows go to <code>rejects</code> with a reason.</li>
+  <li>Store money as <code>numeric(12,2)</code>.</li>
+  <li>Parse dates with each source's documented format.</li>
+  <li>Normalize the hand-typed order refs: trim, upper case, put the hyphen back.</li>
+  <li>Make the load safe to run twice: one transaction, and a primary key.</li>
+  <li>Report with a full outer join, and leave cancelled orders out.</li>
+</ol>
+
+<p>Stuck on check 1 with a COPY error about the header? With <code>header match</code>, the staging columns must be named exactly like the file's header, so quote them: <code>"OrderId"</code>, <code>"Invoice No"</code>.</p>
+
+<p>The solution's three key pieces:</p>
+
+<figure class="code"><figcaption>exercises/0006-etl/solution.ts · validation, as a view over the staging table</figcaption><pre><code>create view orders_checked as
+  select r.*, case
+      when "OrderId" is null or "OrderId" !~ '^A-[0-9]{4}$' then 'OrderId is not like A-1001'
+      when "OrderDate" !~ '^[0-9]{2}\\.[0-9]{2}\\.[0-9]{4}$' then 'OrderDate is not DD.MM.YYYY'
+      when "TotAmt" !~ '^[0-9]{1,3}(\\.[0-9]{3})*,[0-9]{2}$' then 'TotAmt is not an amount like 1.299,00'
+      when "CurrCd" not in ('EUR', 'GBP') then 'unknown currency'
+      when "StatusCd" not in ('OPEN', 'BCKORD', 'SHPD', 'CNCL') then 'unknown status code'
+    end as reason
+  from orders_raw r;</code></pre></figure>
+
+<figure class="code"><figcaption>exercises/0006-etl/solution.ts · inside load()</figcaption><pre><code>const orders = new TextDecoder("windows-1252").decode(await readData("orders.csv"));
+const ledger = new TextDecoder("utf-8").decode(await readData("ledger.csv"));
+
+<span class="c">// One transaction: a reader sees the old load or the new one, never half of each.</span>
+await db.transaction(async (tx) =&gt; {
+  await tx.exec("truncate orders_raw, ledger_raw, orders, invoices, rejects");
+  await tx.query("copy orders_raw from '/dev/blob' with (format csv, header match, delimiter ';')",
+    [], { blob: new Blob([orders]) });
+  <span class="c">// … the same for the ledger, then: bad rows into rejects, good rows cast into orders …</span>
+  await tx.exec(`
+    insert into orders (order_id, ordered_on, customer, status, total, currency)
+      select distinct "OrderId", to_date("OrderDate", 'DD.MM.YYYY'), "CustNm", …,
+             replace(replace("TotAmt", '.', ''), ',', '.')::numeric(12,2), "CurrCd"
+        from orders_checked where reason is null;`);
+});</code></pre></figure>
+
+<figure class="code"><figcaption>exercises/0006-etl/solution.ts · report()</figcaption><pre><code>with o as (
+  <span class="c">-- Finance: cancelled orders never get an invoice, so they have nothing to match.</span>
+  select order_id, total, currency from orders where status &lt;&gt; 'cancelled'
+), i as (
+  <span class="c">-- Compare at the grain both sides share: one row per order, even if it has two invoices.</span>
+  select order_id, sum(total) as total, min(currency) as currency, count(distinct currency) as currencies
+    from invoices group by order_id
+)
+select coalesce(o.order_id, i.order_id) as order_id,
+       case when o.order_id is null then 'only_in_ledger'
+            when i.order_id is null then 'only_in_orders'
+            when o.total = i.total and o.currency = i.currency and i.currencies = 1 then 'matched'
+            else 'amount_differs' end as verdict,
+       o.total as orders_total, i.total as ledger_total
+  from o full outer join i on i.order_id = o.order_id
+ order by 1</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0006-etl/solution.ts</figcaption><pre><code>PASS  Every row is loaded or rejected
+      orders has 10 distinct order ids (want 10); A-1010 rejected: "TotAmt is not an amount like 1.299,00"
+PASS  Text survives the trip
+      orders A-1006: "Müller Werkzeuge GmbH"; orders A-1007: "Café Lumière; Lyon"; orders A-1008: "Søndergaard Design"; invoices A-1006: "Müller Werkzeuge GmbH"
+PASS  Money is exact
+      total types: numeric, numeric (want numeric); orders {"EUR":"8466.10","GBP":"235.19"} (want EUR 8466.10, GBP 235.19); invoices {"EUR":"8309.50","GBP":"79.99"} (want EUR 8309.50, GBP 79.99)
+PASS  Dates mean the same day
+      types: date, date (want date); A-1002 ordered 2026-10-03; A-1008 ordered 2026-10-14; A-1002 invoiced 2026-10-03; A-1007 invoiced 2026-10-12
+PASS  Keys line up
+      invoices point at 9 order ids, all in the A-1001 format (want 9: A-1001 A-1002 A-1003 A-1004 A-1006 A-1007 A-1008 A-1011 A-1012)
+PASS  Loading twice changes nothing
+      rows after 1st load {"orders":10,"invoices":9,"rejects":2}, after 2nd {"orders":10,"invoices":9,"rejects":2}; no duplicate order ids
+PASS  The report finds the real differences
+      A-1004 amount_differs, A-1009 only_in_orders, A-1011 only_in_ledger; A-1004 is 3150.00 in orders and 3105.00 in the ledger; everything else matches
+
+7/7 checks pass.</code></pre></figure>
+
+<p>The two rejects are A-1010 (amount <code>n/a</code>, note "Price on request") and the export's last line, <code>12 rows exported</code>. Keep that footer in the rejects rather than filtering it out quietly: it is the order system telling you how many rows it meant to send, and you can check that against your count. And now the report is short enough to act on. Three orders, each with a question only finance can answer.</p>
+
+<h2>9 · Fix, reject, or ask?</h2>
+
+<p>Each card is something you found in the two files. Decide what the pipeline should do: fix it in the transform because the right answer is documented, keep it out with a reason, or take it to the customer because only they know the answer.</p>
+
+<script type="application/json" data-sort="l6-findings">
+{
+  "buckets": ["Fix in the transform", "Reject with a reason", "Ask the customer"],
+  "items": [
+    { "label": "The ledger's Order Ref says \"a-1002 \"", "detail": "Lower case, with a trailing space.", "bucket": 0,
+      "why": "Finance told you the column is typed by hand. Trimming and upper-casing is a documented, safe rule, and the result is checked against the A-1001 pattern afterwards." },
+    { "label": "A-1010 has the amount \"n/a\"", "detail": "Its note says \"Price on request\".", "bucket": 1,
+      "why": "There is no amount to load, and guessing one would be inventing data. Put the row in rejects with the reason, so it shows up in the counts and in your note to finance." },
+    { "label": "Customer names in orders.csv show up as M�ller", "detail": "The manual says Windows-1252.", "bucket": 0,
+      "why": "The encoding is documented, so decode with it: new TextDecoder(\"windows-1252\"). The � means a UTF-8 decoder already threw the real letter away (<a href=\"https://encoding.spec.whatwg.org/#note-latin1-ascii\">WHATWG Encoding</a>)." },
+    { "label": "A-1004 appears twice in orders.csv", "detail": "Both rows are identical in every field.", "bucket": 0,
+      "why": "An exact copy carries no new information, so select distinct folds it. If the two rows differed, the primary key would stop the load, and that would be a question for the customer." },
+    { "label": "A-1004 is 3,150.00 in orders and 3,105.00 in the ledger", "detail": "Same order, same currency.", "bucket": 2,
+      "why": "It looks like two swapped digits, but you can't know which side is right. Report both numbers and let finance check the invoice." },
+    { "label": "The last line of orders.csv is \"12 rows exported\"", "detail": "The other fields are empty.", "bucket": 1,
+      "why": "It is not an order, so it fails the order id check and goes to rejects. Keeping it visible is useful: the export claims 12 rows, and you can check that 10 loaded + 1 duplicate + 1 rejected order = 12." },
+    { "label": "A-1009 was shipped, but there is no invoice", "detail": "GBP 155.20, note \"Sample pack\".", "bucket": 2,
+      "why": "Maybe samples are never invoiced, maybe an invoice was missed. That is a business rule you don't have. Report it as only_in_orders and ask." },
+    { "label": "Invoice INV-50218 points at A-1011", "detail": "There is no A-1011 in the order export.", "bucket": 2,
+      "why": "The order might be missing from the export, or the ref was typed wrong. Only finance or the order system's owner can say. Report it as only_in_ledger." },
+    { "label": "The ledger's dates look like 10/03/2026", "detail": "Finance said MM/DD/YYYY.", "bucket": 0,
+      "why": "The format is documented, so parse it explicitly: to_date(x, 'MM/DD/YYYY'). Never let a parser guess (<a href=\"https://www.rfc-editor.org/rfc/rfc3339#section-5.2\">RFC 3339</a>)." },
+    { "label": "Cancelled order A-1005 has no invoice", "detail": "Finance said cancelled orders never get one.", "bucket": 0,
+      "why": "This is a business rule you were given, so apply it in the report: leave cancelled orders out. Write the rule down in your note, so finance can confirm it." }
+  ]
+}
+</script>
+
+<h2>10 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l6-recall">
+{
+  "questions": [
+    { "q": "The manual says the export is Windows-1252, but you decode it as UTF-8. What happens to \"Müller\"?",
+      "options": ["It becomes M�ller, with no error", "The decoder stops with an error", "The whole row is skipped silently", "Postgres repairs it on the insert"],
+      "answer": 0,
+      "why": "In Windows-1252 ü is the single byte FC, which isn't valid UTF-8 on its own. The decoder replaces it with � and carries on. That is exactly what the naive run printed for A-1006. The letter is gone, so decode with the documented encoding." },
+    { "q": "Why store amounts as numeric(12,2) rather than double precision?",
+      "options": ["numeric is faster for large sums", "double precision can't hold negative amounts", "numeric stores decimals exactly, floats approximate", "Postgres needs numeric for currency columns"],
+      "answer": 2,
+      "why": "Floating-point values \"are stored as approximations\". For money, Postgres says to \"use the numeric type instead\" (<a href=\"https://www.postgresql.org/docs/current/datatype-numeric.html#DATATYPE-FLOAT\">PostgreSQL docs</a>). 0.1 + 0.2 is 0.30000000000000004 as a float and exactly 0.3 as numeric." },
+    { "q": "COPY runs with ON_ERROR ignore, and one row has the amount n/a. What happens to that row?",
+      "options": ["It loads with a null amount", "It is discarded, with a count", "The whole COPY stops right there", "It goes into a rejects table"],
+      "answer": 1,
+      "why": "ignore \"means discard the input row and continue\", and you get a NOTICE with the number of rows ignored (<a href=\"https://www.postgresql.org/docs/current/sql-copy.html#SQL-COPY-PARAMS-ON-ERROR\">PostgreSQL COPY</a>). The row itself is gone. A rejects table is something you build yourself." },
+    { "q": "Why reconcile with a full outer join instead of an inner join?",
+      "options": ["Inner joins are slower on large tables", "Inner joins cannot compare two numeric columns", "Inner joins count duplicate rows twice over", "Inner joins drop rows with no match"],
+      "answer": 3,
+      "why": "An inner join keeps only ids found on both sides, so A-1009 (no invoice) and A-1011 (no order) vanish: the two findings finance most needs. A full outer join keeps both, with nulls on the missing side." },
+    { "q": "In Bun, what does new Date(\"03.10.2026\") return for an export written as DD.MM.YYYY?",
+      "options": ["3 October 2026", "10 March 2026", "An Invalid Date", "1 January 1970"],
+      "answer": 1,
+      "why": "The string isn't in JavaScript's one defined format, so the parser \"may fall back to any implementation-specific heuristics\" (<a href=\"https://tc39.es/ecma262/multipage/numbers-and-dates.html#sec-date.parse\">ECMAScript, Date.parse</a>). Bun read it month first. Use to_date with the documented format." },
+    { "q": "Your load will run again after every new export. What makes running it twice safe?",
+      "options": ["Run it only once per night", "Delete the CSV after loading it", "Replace everything inside one database transaction", "Add a pause between both runs"],
+      "answer": 2,
+      "why": "Truncate and reload inside one transaction gives the same tables every time, and readers never see half a load. A primary key makes any duplicate that still gets through fail loudly. An upsert with ON CONFLICT is the other option, for exports that only hold changes." },
+    { "q": "From Lesson 5: CreateReturn timed out, and the system has no idempotency key. What do you do next?",
+      "options": ["Check whether the return already exists", "Retry it at once, three times", "Tell the customer it definitely failed", "Wait for Retry-After, then resend it"],
+      "answer": 0,
+      "why": "A call with side effects that timed out may have happened anyway. \"APIs with side effects aren't safe to retry unless they provide idempotency\" (<a href=\"https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/\">Amazon</a>). Look first. Lesson 7 builds exactly this." },
+    { "q": "From Lesson 4: why is filtering by permission after picking the top k results a problem?",
+      "options": ["It makes the embeddings less accurate", "Row-level security does not allow it", "It needs an extra vector index", "It can leave too few results"],
+      "answer": 3,
+      "why": "If the top k are all documents the user may not see, the filter removes them all and the user gets nothing useful. Lesson 4 called that starvation. Filter first, then rank." }
+  ]
+}
+</script>
+
+<h2>11 · Write it up for finance</h2>
+
+<p>Acme's finance lead isn't an engineer, and they'll decide what to fix based on what you send. Write the note that goes with your report. It saves as you type.</p>
+
+<script type="application/json" data-practice="l6-findings-note">
+{
+  "title": "October reconciliation: findings for Acme finance",
+  "maxWords": 200,
+  "fields": [
+    { "key": "summary", "label": "The answer, first", "hint": "In one or two sentences: how many orders you checked, how many match, how many need a look." },
+    { "key": "differences", "label": "What needs a look", "hint": "One line per order: the id, both numbers or which side it's missing from." },
+    { "key": "excluded", "label": "What you left out, and why", "hint": "The rows you rejected and the rules you applied." },
+    { "key": "questions", "label": "Questions for finance", "hint": "What only they can answer." }
+  ],
+  "checks": [
+    "The first sentence gives the result in numbers (e.g. 7 of 10 orders match)",
+    "A-1004 shows both amounts, 3,150.00 and 3,105.00, without saying which one is right",
+    "A-1009 and A-1011 are each named, with the side they are missing from",
+    "A-1010 is mentioned as not loaded because its amount is \"n/a\", not silently dropped",
+    "The cancelled-orders rule is written down as a rule you were given, so finance can confirm it",
+    "No word like CSV, encoding, numeric, join or staging table; amounts are written with their currency",
+    "200 words or fewer"
+  ]
+}
+</script>
+
+<p>Notice that half the note is questions. That's normal. The pipeline's job is to make the differences small, exact and believable. Deciding what they mean is the customer's job.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 20 minutes</p>
+  <p><a href="https://www.postgresql.org/docs/current/sql-copy.html">The COPY page of the PostgreSQL manual</a>. Read the parameters (especially <code>HEADER</code>, <code>ENCODING</code> and <code>ON_ERROR</code>) and the "CSV Format" section, which lists in a few paragraphs most of the ways CSV goes wrong, including the missing difference between an empty string and NULL. Then read <a href="https://www.rfc-editor.org/rfc/rfc4180#section-2">section 2 of RFC 4180</a>, which takes five minutes and is the closest thing CSV has to rules.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next: <a href="0007-human-in-the-loop-workflows.html"><strong>Lesson 7, human-in-the-loop and durable workflows</strong></a> (Stage 7). The agent can now look up orders. Next it starts returns, which means a person must approve the big ones, the workflow must wait days for them, and a crash must never refund anyone twice. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>
