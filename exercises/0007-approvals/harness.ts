@@ -253,4 +253,5 @@ export async function runChecks(wf: Workflow) {
   for (const [ok, name, detail] of results) console.log(`${ok ? "PASS" : "FAIL"}  ${name}\n      ${detail}`);
   const passed = results.filter((r) => r[0]).length;
   console.log(`\n${passed}/${results.length} checks pass.`);
+  await db.close(); // without this, PGlite can keep the process alive for several seconds
 }
