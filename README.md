@@ -21,7 +21,7 @@ The course follows the 12 stages of [Suraj Sharma's FDE roadmap](https://x.com/s
 | 7 | Human-in-the-loop and durable workflows | 7 | ✅ |
 | 8 | Evals on customer data | 10 | ✅ |
 | 9 | Telemetry, ROI and customer health | 9 | ✅ |
-| 10 | Handoff and self-serve admin | 12 | coming soon |
+| 10 | Handoff and self-serve admin | 12 | ✅ |
 | 11 | PII guardrails (specialist) | 6 | coming soon |
 | 12 | Air-gapped and VPC deployment (specialist) | 2 | coming soon |
 | 13 | Edge and on-prem inference (specialist) | 8 | coming soon |
