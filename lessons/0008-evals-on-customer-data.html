@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 8 · Evals on customer data</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0007-human-in-the-loop-workflows.html">← Lesson 7</a>
+  <a href="0009-telemetry-and-roi.html">Lesson 9 →</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 8 · Stage 10 · about 60 minutes</p>
+<h1>Evals on customer data</h1>
+<p class="subtitle">Acme wants version 2 of the support agent live next week. It sounds friendlier, and it looked better in the demo. Dana, the COO, asks one question: is it at least as good as what runs today, on our own emails? This lesson builds the test that answers it with numbers, and that would have stopped v2 from promising a customer a EUR 1,299 refund nobody had approved.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>A golden set built from Acme's real emails, and a grader in TypeScript that checks what the agent did (its tool calls and the return it started) as well as what it said. It runs each case three times, reports pass@1, pass@3 and pass^3, and blocks a release that breaks a case that used to work, even when the average went up. Then you write the result for Dana in one paragraph.</p>
+</div>
+
+<h2>1 · Why evals are part of the job</h2>
+
+<p>OpenAI's job ad for an FDE names three ways your work is judged: "You will measure success through production adoption, measurable workflow impact, and eval-driven feedback that changes product and model roadmaps."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/">OpenAI, Forward Deployed Engineer (FDE) job ad</a>, "About the role", as of November 2026.</span> This lesson is the third one. <a href="0009-telemetry-and-roi.html">Lesson 9</a> covers the other two.</p>
+
+<p>An eval is a test you can run again and again: fixed inputs, an agreed idea of correct, and a score. Benchmarks from the model vendor are evals too, but they don't use your customer's data, so they can't tell Dana anything about Acme. OpenAI's eval guide lists that mistake by name: "Biased design: Creating eval datasets that don't faithfully reproduce production traffic patterns."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://developers.openai.com/api/docs/guides/evaluation-best-practices">OpenAI, "Evaluation best practices"</a>, section "Anti-patterns". The same page says "Adopt eval-driven development: Evaluate early and often." Note: OpenAI is shutting down its hosted Evals product on 30 November 2026. The advice in the guide stands; the product doesn't.</span> Anthropic's guide says the same in four words: "Be task-specific: Design evals that mirror your real-world task distribution."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://platform.claude.com/docs/en/test-and-evaluate/develop-tests">Anthropic docs, "Define success criteria and build evaluations"</a>, section "Eval design principles".</span></p>
+
+<p>Here is the situation. v1 of Acme's agent has been live for a month. It answers order-status emails and starts returns through the tools from <a href="0005-mcp-and-legacy-integration.html">Lesson 5</a> and the workflow from <a href="0007-human-in-the-loop-workflows.html">Lesson 7</a>. v2 has a warmer prompt and cleans up messy order ids like <code>a-1002 </code>. Nobody has measured either of them.</p>
+
+<h2>2 · Build the golden set from the customer's data</h2>
+
+<p>A golden set is a list of real inputs, each with the result the customer agrees is correct. You don't need hundreds to start. Anthropic's engineers: "In reality, 20-50 simple tasks drawn from real failures is a great start", and "If you're already in production, look at your bug tracker and support queue."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a> (January 2026), sections "Step 0. Start early" and "Step 1. Start with what you already test manually".</span> OpenAI: "Log everything: Log as you develop so you can mine your logs for good eval cases." Acme's golden set starts with eight emails from the October helpdesk export: order-status questions, an order that doesn't exist, a small return, a big return, and a refund on a cancelled order. You'll add a case every time something goes wrong in production.</p>
+
+<p><strong>Who decides what's correct?</strong> Not you. Hamel Husain, who has built evals for many companies, starts every project by finding the principal domain expert: "In most organizations there is usually one (maybe two) key individuals whose judgment is crucial for the success of your AI product."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://hamel.dev/blog/posts/llm-judge/#step-1-find-the-principal-domain-expert">Hamel Husain, "Using LLM-as-a-Judge For Evaluation: A Complete Guide"</a> (October 2024), "Step 1: Find The Principal Domain Expert".</span> At Acme that is Luis Romero's support team. They wrote down, for each email, what a correct run does. Anthropic's test for a good case: "A good task is one where two domain experts would independently reach the same pass/fail verdict." If two people on Luis's team disagree about a case, fix the case before you grade anything against it.</p>
+
+<p>Expect the team to change its mind. A study of people grading model output found that "users need criteria to grade outputs, but grading outputs helps users define criteria". The authors call it criteria drift.<span class="sn-ref"></span><span class="sidenote numbered">Shankar et al., <a href="https://arxiv.org/abs/2404.12272">"Who Validates the Validators?"</a> (2024), abstract.</span> That's normal. Version the golden set like code, and write down why each change was made.</p>
+
+<div class="callout">
+  <p><strong>Customer data stays the customer's.</strong> The golden set is built from real emails, so it holds names, addresses and order details. Remove what the eval doesn't need (Acme's file has no customer names), keep it where your contract says Acme's data may live, and remember <a href="0004-permission-filtered-retrieval.html">Lesson 4</a>: an eval dataset built from logs can hold data some users may never see. Lesson 11 goes deeper on PII.</p>
+</div>
+
+<p>Here is one case from <code>exercises/0008-evals/data/golden.json</code>:</p>
+
+<figure class="code"><figcaption>exercises/0008-evals/data/golden.json · case R-02</figcaption><pre><code>{
+  "id": "R-02",
+  "category": "large return",
+  "message": "The bikes on A-1001 arrived damaged. We want to return the whole order (EUR 1,299).",
+  "expect": {
+    "lookups": ["A-1001"],
+    "returns": [{ "order_id": "A-1001", "amount": 1299 }],
+    "must_say": ["A-1001", "approv"],
+    "must_not_say": ["is approved", "been approved", "on its way", "has been refunded"]
+  }
+}</code></pre></figure>
+
+<p>Read it as Luis's team would say it: look up A-1001; start exactly one return, for EUR 1,299; tell the customer it needs approval; never tell them it is approved or that money is coming. The <code>must_not_say</code> phrases are wrong replies the team has seen before.</p>
+
+<h2>3 · Three kinds of grader</h2>
+
+<p>A grader decides whether one run passed. Anthropic's docs rank three kinds:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://platform.claude.com/docs/en/test-and-evaluate/develop-tests">Anthropic docs, "Define success criteria and build evaluations"</a>, section "Grade your evaluations". The engineering post's table adds that model-based graders are "Non-deterministic", "More expensive than code" and "Requires calibration with human graders for accuracy".</span></p>
+
+<table>
+  <thead><tr><th>Grader</th><th>Anthropic's verdict</th><th>Use it at Acme for</th></tr></thead>
+  <tbody>
+    <tr><td>Code</td><td>"Fastest and most reliable, extremely scalable, but also lacks nuance"</td><td>Which tools ran, with which arguments; which return exists; required and forbidden phrases</td></tr>
+    <tr><td>Model (an LLM judge)</td><td>"Fast and flexible, scalable and suitable for complex judgment. Test to ensure reliability first, then scale."</td><td>Tone with an upset customer; whether every fact in a long reply comes from a tool result</td></tr>
+    <tr><td>Person</td><td>"Most flexible and high quality, but slow and expensive. Avoid if possible."</td><td>Deciding what correct means; checking the other two graders</td></tr>
+  </tbody>
+</table>
+
+<p>Anthropic's engineers sum it up: "We recommend choosing deterministic graders where possible, LLM graders where necessary or for additional flexibility, and using human graders judiciously for additional validation."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a>, "Step 5: Design graders thoughtfully".</span> Today's grader is all code.</p>
+
+<p>Whatever the grader, make it say pass or fail. Husain: "If your evaluations consist of a bunch of metrics that LLMs score on a 1-5 scale (or any other scale), you're doing it wrong."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://hamel.dev/blog/posts/llm-judge/#dont-stray-from-binary-passfail-judgments-when-starting-out">Hamel Husain, "Don't stray from binary pass/fail judgments when starting out"</a>.</span> Nobody can act on "tone: 3.4". Everybody can act on "R-02 failed, here is the reply".</p>
+
+<h2>4 · Grade what it did, not only what it said</h2>
+
+<p>An agent's reply is a claim about what happened. The truth is in Acme's systems. Anthropic's example: "A flight-booking agent might say 'Your flight has been booked' at the end of the transcript, but the outcome is whether a reservation exists in the environment's SQL database."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a>, "The structure of an evaluation".</span> So the outcome is the state of the real systems after the run, not the agent's words about it.</p>
+
+<p>The τ-bench benchmark grades customer-service agents this way, and its example is a return. The agent "can call various (read) actions, but the agent is successful if the only database write action is" the one expected return, with the right order, items and payment method, "and the user responses contain "54.04", "41.64" as substrings."<span class="sn-ref"></span><span class="sidenote numbered">Yao et al., <a href="https://arxiv.org/html/2406.12045#S3">"τ-bench: A Benchmark for Tool-Agent-User Interaction in Real-World Domains"</a> (Sierra, 2024), section 3, "Reward". The abstract: it "compares the database state at the end of a conversation with the annotated goal state."</span> That gives you two rules:</p>
+<ul>
+  <li><strong>Reads are free.</strong> The agent may look things up in any order, as often as it likes. Only check that the reads the answer depends on happened. Anthropic warns against grading one exact path: "it's often better to grade what the agent produced, not the path it took."</li>
+  <li><strong>Writes are exact.</strong> Every write must be one the golden set expects, with the right arguments, exactly once. A second <code>start_return</code> is a second workflow, and from <a href="0007-human-in-the-loop-workflows.html">Lesson 7</a> you know what a duplicate return costs.</li>
+</ul>
+
+<p>OpenAI's guide names the same two checks for a single agent: "Tool selection: Evaluations that test whether the agent is able to select the correct tool to use" and "Data precision: Evaluations that verify the agent calls the tool with the correct arguments."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://developers.openai.com/api/docs/guides/evaluation-best-practices#single-agent-architectures">OpenAI, "Evaluation best practices", "Single-agent architectures"</a>. Its example tool is <code>check_order_status(order_id)</code>.</span> The reply still matters: it is what the customer reads. So check it too, with the phrases the team gave you.</p>
+
+<p>Be honest about what phrase lists can't do. τ-bench's authors say their own check "might be a necessary but not sufficient condition": the agent might, for example, "issue the return without explicit user confirmation, which violates the policy." A phrase list catches the wrong replies the team has already seen. It misses new ways of being wrong. That is what model judges and reading transcripts are for (section 7).</p>
+
+<h2>5 · Run every case more than once</h2>
+
+<p>Ask an agent the same thing three times and you may get three different runs. One good run proves little. Anthropic defines two scores for this:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a>, "How to think about non-determinism in evaluations for agents".</span></p>
+<ul>
+  <li>pass@k "measures the likelihood that an agent gets at least one correct solution in <em>k</em> attempts."</li>
+  <li>pass^k "measures the probability that <em>all k</em> trials succeed." Their example: "If your agent has a 75% per-trial success rate and you run 3 trials, the probability of passing all three is (0.75)³ ≈ 42%. This metric especially matters for customer-facing agents where users expect reliable behavior every time."</li>
+</ul>
+
+<p>Acme's customers don't get three tries. Each email gets one run, so pass^k is the number that matches what they live through. τ-bench found the gap is large: for its best agent, "which has a &gt;60% average task success, pass^8 drops to &lt;25%."<span class="sn-ref"></span><span class="sidenote numbered">Yao et al., <a href="https://arxiv.org/html/2406.12045">τ-bench</a>, section 5.1, "Main results". The paper defines pass^k as "the chance that all k i.i.d. task trials are successful, averaged across tasks."</span> pass@k is still useful while you build: if a case passes at least once, the agent can do it, and the work is to make it reliable.</p>
+
+<h2>6 · Regressions block the release</h2>
+
+<p>Anthropic separates two kinds of eval. Capability evals hold what the agent can't do well yet. Regression evals "ask, 'Does the agent still handle all the tasks it used to?' and should have a nearly 100% pass rate."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a>, "Capability vs. regression evals".</span> For a release decision, the regression set is a release gate. The rule in today's exercise: a case that passed every run before and fails any run after is a regression, and one regression blocks the release, whatever the average does.</p>
+
+<p>Why not just compare averages? Because eight cases is a tiny sample. One run more or less moves the score by four points. Evan Miller, at Anthropic, asks eval writers to treat evals as experiments and report the standard error with every score: "A 95% confidence interval can be calculated from the SEM by adding and subtracting 1.96 × SEM from the mean score."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/statistical-approach-to-model-evals">Anthropic, "A statistical approach to model evaluations"</a> (November 2024), recommendations 1, 4 and 5. The paper: Miller, <a href="https://arxiv.org/abs/2411.00640">"Adding Error Bars to Evals"</a>.</span> The same post warns: "If an eval doesn't have very many questions, confidence intervals associated with any statistical tests will tend to be wide." And when two versions answer the same questions, compare them case by case: a paired comparison "lets us eliminate the variance in question difficulty".</p>
+
+<p>A per-case regression check is the simplest paired comparison there is. With eight cases you can't prove v2 is better on average. You can prove it broke R-02.</p>
+
+<p>Isn't eight cases too few? Anthropic's docs say "Prioritize volume over quality: More questions with slightly lower signal automated grading is better than fewer questions with high-quality human hand-graded evals." Their engineers say 20 to 50 real cases is "a great start", because early changes have large effects and "small sample sizes suffice". Both are true at different times. Start small with real cases. Grow the set as the differences you care about get smaller.</p>
+
+<h2>7 · Check the checker</h2>
+
+<p>Some things code can't check: whether the tone fits a customer whose bikes arrived broken, or whether every fact in a long reply came from a tool result. For those you use a model as the judge. Judges are good but not neutral. The MT-Bench paper found strong judges reach "over 80% agreement, the same level of agreement between humans", and also "position, verbosity, and self-enhancement biases".<span class="sn-ref"></span><span class="sidenote numbered">Zheng et al., <a href="https://arxiv.org/abs/2306.05685">"Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena"</a> (2023), abstract. Verbosity bias is a judge preferring longer answers; position bias is preferring an answer because of where it appears.</span> The criteria-drift study from section 2 is blunter: evaluators written by a model "simply inherit all the problems of the LLMs they evaluate, requiring further human validation."</p>
+
+<p>So every automated grader, including the code you write today, gets checked against people. OpenAI: "Maintain agreement: Use human feedback to calibrate automated scoring." The exercise does exactly that: checks 1 to 5 are runs that Luis's team graded by hand, and your grader must agree with them.</p>
+
+<p>Measure agreement carefully. Husain's warning: "if an error occurs in 5% of examples, a judge that always predicts Pass still has 95% agreement while detecting none of the errors."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://hamel.dev/blog/posts/llm-judge/">Hamel Husain, "Using LLM-as-a-Judge"</a>, FAQ "How do you validate an LLM judge against human labels?". The guide suggests reporting the judge's agreement on passes and on failures separately.</span> Report two numbers: how many of the team's failures the judge also failed, and how many of the team's passes it also passed.</p>
+
+<p>And read the transcripts. Anthropic: "You won't know if your graders are working well unless you read the transcripts and grades from many trials." When a run fails, "the transcript tells you whether the agent made a genuine mistake or whether your graders rejected a valid solution." Reading many failed transcripts and sorting the failures into groups is called error analysis, and it tells you what to grade next. Husain admits that building a judge is partly "a nice 'hack' I use to trick people into carefully looking at their data!"</p>
+
+<h2>8 · Shadow mode: real traffic, no real writes</h2>
+
+<p>A golden set is fixed. Live traffic isn't. Before v2 talks to customers, you can run it in shadow mode. AWS describes it for ML models: the new version gets "a copy of the inference requests", and "Only the responses of the production variant are returned to the calling application."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html">AWS, "Shadow tests" (Amazon SageMaker AI docs)</a>. That page is about classic ML models, not agents.</span></p>
+
+<p>For an agent, one more rule, and AWS's page doesn't say it for you: the shadow copy must never run a write. Give it a <code>start_return</code> that records what it <em>would</em> have done and changes nothing. Then compare: the email, what the live system or Luis's team did, and what the shadow agent wanted to do. Every disagreement is either a bug or a new golden case. This is week 3 of the plan you wrote in <a href="0002-discovery-and-scoping.html">Lesson 2</a>.</p>
+
+<h2>9 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0008-evals/</code>. Read the top of <code>harness.ts</code>, then open <code>data/golden.json</code> and a few lines of <code>data/runs.jsonl</code>: 48 transcripts, v1 and v2 each answering the eight emails three times. Each line holds the tool calls with their arguments and results, and the reply. <code>start.ts</code> is the grader most teams write first:</p>
+
+<figure class="code"><figcaption>exercises/0008-evals/start.ts · the deliberately naive grader</figcaption><pre><code><span class="c">// "If the reply mentions what we expected, it passed."</span>
+function grade(c: Case, run: Run): Verdict {
+  const reply = run.reply.toLowerCase();
+  const missing = c.expect.must_say.filter((p) =&gt; !reply.includes(p.toLowerCase()));
+  return { pass: missing.length === 0, reasons: missing.map((p) =&gt; `doesn't say "${p}"`) };
+}
+
+<span class="c">// "The share of runs that passed is the score." / "The higher score wins."</span></code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0008-evals/start.ts</figcaption><pre><code>FAIL  Catches a wrong fact
+      team passed "Order A-1001 shipped on 3 October, so the bikes should be with you before Saturday." -&gt; you: PASS
+      team failed "Order A-1001 hasn't shipped yet. It is still being packed." -&gt; you: PASS
+FAIL  Grades what it did, not only what it said
+      team passed "I've started the return for the tart moulds on order A-1007. EUR 66.60 will be refunded within 5 working days." -&gt; you: PASS
+      team failed "I've started the return for the tart moulds on order A-1007. EUR 66.60 will be refunded within 5 working days." -&gt; you: PASS
+FAIL  Any good path passes, a double write doesn't
+      …
+FAIL  Doesn't reward an invented answer
+      team failed "Order A-1099 has shipped. You can check the tracking link in your confirmation email." -&gt; you: PASS
+FAIL  Doesn't reward an empty promise
+      team failed "Good news: your return on A-1001 is approved and your refund of EUR 1,299.00 is on its way." -&gt; you: PASS
+FAIL  Counts reliability, not only the average
+      cases 5, k 3, pass@1 80%, pass@3 80%, pass^3 80% (want 5, 3, 80%, 100%, 60%)
+FAIL  Blocks a regression, even when the average goes up
+      13/15 -&gt; 14/15 with B now failing once: ship true, regressions [] (want false, [B]); 13/15 -&gt; 15/15: ship true, regressions [] (want true, [])
+
+0/7 checks pass.
+
+Your scorecard on data/runs.jsonl (8 cases, 3 runs each):
+  v1  pass@1 96%  pass@3 96%  pass^3 96%
+  v2  pass@1 100%  pass@3 100%  pass^3 100%
+  Ship v2? yes. Regressions: none.
+  Failed runs:
+    v1-S-02-2: doesn't say "backordered"</code></pre></figure>
+
+<p>Read check 2. Both replies are word for word the same. The run the team failed sent <code>amount: 666</code> to <code>start_return</code>, ten times the real refund, and no reply check can see that. Then read the scorecard: the naive grader says v2 is perfect and should ship.</p>
+
+<p>Now fix <code>start.ts</code>. The TODO list in the file follows the order of the checks. Give yourself 30 minutes before you open the solution.</p>
+<ol>
+  <li>Fail the run if the reply contains any <code>must_not_say</code> phrase.</li>
+  <li>Grade the writes: every call to a tool in <code>WRITE_TOOLS</code> must match an expected return (same order, same amount), and every expected return must happen.</li>
+  <li>Don't demand one exact sequence of calls. Extra reads are fine; a second write is not.</li>
+  <li>Check that every order in <code>lookups</code> was read with <code>get_order</code>, with that exact id.</li>
+  <li>Give a reason for every failure. You'll read them, and so will Luis.</li>
+  <li>In <code>summarize()</code>, compute pass@1, pass@k and pass^k.</li>
+  <li>In <code>decide()</code>, find regressions, and ship only if there are none and pass^k didn't go down.</li>
+</ol>
+
+<p>The full solution is in <code>solution.ts</code>. Its grader:</p>
+
+<figure class="code"><figcaption>exercises/0008-evals/solution.ts · grade()</figcaption><pre><code>function grade(c: Case, run: Run): Verdict {
+  const { lookups, returns, must_say, must_not_say } = c.expect;
+  const reasons: string[] = [];
+
+  <span class="c">// Reads are free: any order, any number of times. The ones the answer depends on must happen.</span>
+  for (const id of lookups)
+    if (!run.calls.some((k) =&gt; k.tool === "get_order" &amp;&amp; k.args.order_id === id)) reasons.push(`never read order ${id}`);
+
+  <span class="c">// Writes are exact: each write must match an expected return, and each expected return must happen once.</span>
+  const expected = [...returns];
+  for (const w of run.calls.filter((k) =&gt; WRITE_TOOLS.includes(k.tool))) {
+    const i = expected.findIndex((r) =&gt; r.order_id === w.args.order_id &amp;&amp; Math.abs(r.amount - Number(w.args.amount)) &lt; 0.005);
+    if (i === -1) reasons.push(`unexpected write ${w.tool}(${w.args.order_id}, ${w.args.amount})`);
+    else expected.splice(i, 1);
+  }
+  for (const r of expected) reasons.push(`never started the return on ${r.order_id} for ${r.amount}`);
+
+  <span class="c">// The reply: every fact the team requires, and none of the wrong claims they've seen before.</span>
+  const reply = run.reply.toLowerCase();
+  for (const p of must_say) if (!reply.includes(p.toLowerCase())) reasons.push(`doesn't say "${p}"`);
+  for (const p of must_not_say) if (reply.includes(p.toLowerCase())) reasons.push(`says "${p}"`);
+
+  return { pass: reasons.length === 0, reasons };
+}</code></pre></figure>
+
+<p>And the release decision:</p>
+
+<figure class="code"><figcaption>exercises/0008-evals/solution.ts · decide()</figcaption><pre><code>function decide(before: Grade[], after: Grade[]): Decision {
+  const now = byCase(after);
+  <span class="c">// A case that always worked and now fails, even once, or wasn't run at all.</span>
+  const regressions = [...byCase(before)]
+    .filter(([id, was]) =&gt; was.every(Boolean) &amp;&amp; !(now.get(id)?.every(Boolean) ?? false))
+    .map(([id]) =&gt; id)
+    .sort();
+  return { ship: regressions.length === 0 &amp;&amp; summarize(after).passHatK &gt;= summarize(before).passHatK, regressions };
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0008-evals/solution.ts</figcaption><pre><code>PASS  Catches a wrong fact
+      team passed "Order A-1001 shipped on 3 October, so the bikes should be with you before Saturday." -&gt; you: PASS
+      team failed "Order A-1001 hasn't shipped yet. It is still being packed." -&gt; you: FAIL (says "hasn't shipped")
+PASS  Grades what it did, not only what it said
+      team passed "I've started the return for the tart moulds on order A-1007. EUR 66.60 will be refunded within 5 working days." -&gt; you: PASS
+      team failed "I've started the return for the tart moulds on order A-1007. EUR 66.60 will be refunded within 5 working days." -&gt; you: FAIL (unexpected write start_return(A-1007, 666); never started the return on A-1007 for 66.6)
+PASS  Any good path passes, a double write doesn't
+      team passed "I've checked there was no earlier return on A-1001 and asked a returns manager to approve the EUR 1,299.00 return. You'll hear from us within 48 hours." -&gt; you: PASS
+      team failed "I've asked a returns manager to approve the EUR 1,299.00 return on A-1001. You'll hear from us within 48 hours." -&gt; you: FAIL (unexpected write start_return(A-1001, 1299))
+PASS  Doesn't reward an invented answer
+      team passed "I couldn't find an order A-1099. Could you check the number on your confirmation email?" -&gt; you: PASS
+      team failed "Order A-1099 has shipped. You can check the tracking link in your confirmation email." -&gt; you: FAIL (says "shipped")
+PASS  Doesn't reward an empty promise
+      team passed "Your return of EUR 1,299.00 on A-1001 needs approval from a returns manager. You'll hear from us within 48 hours." -&gt; you: PASS
+      team failed "Good news: your return on A-1001 is approved and your refund of EUR 1,299.00 is on its way." -&gt; you: FAIL (says "is approved"; says "on its way")
+PASS  Counts reliability, not only the average
+      cases 5, k 3, pass@1 80%, pass@3 100%, pass^3 60% (want 5, 3, 80%, 100%, 60%)
+PASS  Blocks a regression, even when the average goes up
+      13/15 -&gt; 14/15 with B now failing once: ship false, regressions [B] (want false, [B]); 13/15 -&gt; 15/15: ship true, regressions [] (want true, [])
+
+7/7 checks pass.
+
+Your scorecard on data/runs.jsonl (8 cases, 3 runs each):
+  v1  pass@1 92%  pass@3 100%  pass^3 75%
+  v2  pass@1 96%  pass@3 100%  pass^3 88%
+  Ship v2? no. Regressions: R-02.
+  Failed runs:
+    v1-S-02-2: never read order A-1002; doesn't say "backordered"
+    v1-U-01-3: says "shipped"
+    v2-R-02-2: says "is approved"; says "on its way"</code></pre></figure>
+
+<p>Look at the scorecard. v2 is better on every average: it fixed v1's messy-id bug (S-02) and stopped inventing a status for an unknown order (U-01). And in one run of three, it told a customer their EUR 1,299 refund was approved and on its way, while the workflow was still waiting for a manager. R-02 passed every v1 run, so it is a regression and v2 doesn't ship. The fix is in the prompt ("never say a return is approved unless the tool says so"), and then you run the whole set again.</p>
+
+<p>Try one experiment. In a copy of <code>solution.ts</code>, delete the <code>must_not_say</code> loop and run it: checks 1, 4 and 5 fail, the three replies that use the right words to say something false. Undo that, and make <code>decide()</code> compare <code>passAt1</code> only. Check 7 fails, and the scorecard says ship.</p>
+
+<h2>10 · Which grader?</h2>
+
+<p>For each thing Acme wants checked, pick the cheapest grader that can check it reliably.</p>
+
+<script type="application/json" data-sort="l8-graders">
+{
+  "buckets": ["Code", "Model judge", "Person"],
+  "items": [
+    { "label": "start_return ran once, for A-1001, for EUR 1,299", "detail": "Read from the transcript's tool calls.", "bucket": 0,
+      "why": "Tool names and arguments are data. Code checks them exactly, every time, for free. τ-bench grades returns this way (<a href=\"https://arxiv.org/html/2406.12045#S3\">τ-bench, section 3</a>)." },
+    { "label": "The reply says the refund is on its way while the workflow waits", "detail": "A wrong claim the team has seen before.", "bucket": 0,
+      "why": "A known wrong phrase is a must_not_say entry. Code catches it in microseconds. Save the judge for wrong claims nobody has listed yet." },
+    { "label": "The reply's tone fits a customer whose bikes arrived broken", "detail": "Polite, not cheerful, says sorry once.", "bucket": 1,
+      "why": "Tone has no exact rule, so code can't check it. A model judge with a clear rubric can, after you check it against Luis's team on a sample (<a href=\"https://platform.claude.com/docs/en/test-and-evaluate/develop-tests\">Anthropic docs</a>)." },
+    { "label": "Every fact in a long reply comes from a tool result", "detail": "Delivery dates, amounts, statuses.", "bucket": 1,
+      "why": "Comparing free text with tool results needs judgment, which a model judge can give. Calibrate it first: Anthropic says model graders require \"calibration with human graders for accuracy\" (<a href=\"https://www.anthropic.com/research/demystifying-evals-for-ai-agents\">Anthropic</a>)." },
+    { "label": "What a correct reply is for a new kind of email", "detail": "A customer asks to change the delivery address.", "bucket": 2,
+      "why": "Only Acme can say what correct means. Luis's team writes the expected outcome; you turn it into a case (<a href=\"https://hamel.dev/blog/posts/llm-judge/#step-1-find-the-principal-domain-expert\">Husain, find the domain expert</a>)." },
+    { "label": "Whether the model judge agrees with Luis's team", "detail": "On 40 runs they graded by hand.", "bucket": 2,
+      "why": "People are the reference that every other grader is checked against. OpenAI: \"Use human feedback to calibrate automated scoring\" (<a href=\"https://developers.openai.com/api/docs/guides/evaluation-best-practices\">OpenAI</a>)." },
+    { "label": "pass^3 for v1 and v2 over 48 runs", "detail": "From the pass/fail of each run.", "bucket": 0,
+      "why": "Once each run has a verdict, the scores are arithmetic. Code, no question." },
+    { "label": "Reading 30 failed transcripts before the release meeting", "detail": "To see what the failures have in common.", "bucket": 2,
+      "why": "This is error analysis. \"You won't know if your graders are working well unless you read the transcripts\" (<a href=\"https://www.anthropic.com/research/demystifying-evals-for-ai-agents\">Anthropic</a>)." }
+  ]
+}
+</script>
+
+<h2>11 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l8-recall">
+{
+  "questions": [
+    { "q": "v2 tells a customer \"your return is approved\" while the workflow is waiting for a manager. Which grader catches this most cheaply?",
+      "options": ["A second model reading the reply", "A person reading every single reply", "A phrase check from the team", "A benchmark score from the vendor"],
+      "answer": 2,
+      "why": "It's a known wrong claim, so it goes in must_not_say and code catches it every time. Anthropic: \"choosing deterministic graders where possible, LLM graders where necessary\" (<a href=\"https://www.anthropic.com/research/demystifying-evals-for-ai-agents\">Anthropic</a>)." },
+    { "q": "The reply is perfect, but start_return was called with EUR 666 instead of 66.60. What should the grader say?",
+      "options": ["Fail: the write itself is wrong", "Pass: the customer read the amount", "Pass: the workflow will fix it", "Fail: the reply is too short"],
+      "answer": 0,
+      "why": "The outcome is what happened in Acme's systems, not what the reply says. \"The outcome is whether a reservation exists in the environment's SQL database\" (<a href=\"https://www.anthropic.com/research/demystifying-evals-for-ai-agents\">Anthropic</a>)." },
+    { "q": "Each run of a case passes 80% of the time, independently. Roughly what share of cases pass all three runs?",
+      "options": ["About 80 percent", "About 99 percent", "About 33 percent", "About 51 percent"],
+      "answer": 3,
+      "why": "0.8 × 0.8 × 0.8 ≈ 0.51. That's pass^3. Anthropic's example: \"(0.75)³ ≈ 42%. This metric especially matters for customer-facing agents\" (<a href=\"https://www.anthropic.com/research/demystifying-evals-for-ai-agents\">Anthropic</a>)." },
+    { "q": "On 8 cases with 3 runs each, v2 scores 96% and v1 92%. What does that gap tell Dana?",
+      "options": ["v2 is four points better overall", "Very little: it's a single run", "v1 must be rolled back today", "Run the eval until v2 wins"],
+      "answer": 1,
+      "why": "Four points is one run out of 24. \"If an eval doesn't have very many questions, confidence intervals associated with any statistical tests will tend to be wide\" (<a href=\"https://www.anthropic.com/research/statistical-approach-to-model-evals\">Anthropic</a>). A per-case regression check is more useful here." },
+    { "q": "A model judge agrees with Luis's team on 95% of runs. Why might it still be useless?",
+      "options": ["Models can never grade free text", "Agreement above 90 percent means overfitting", "Humans disagree, so agreement means nothing", "If 95% pass, always-pass agrees too"],
+      "answer": 3,
+      "why": "\"A judge that always predicts Pass still has 95% agreement while detecting none of the errors\" (<a href=\"https://hamel.dev/blog/posts/llm-judge/\">Husain</a>). Report agreement on the team's failures separately." },
+    { "q": "Why do the golden set's correct outcomes come from Luis's team, not from you?",
+      "options": ["They type faster than the engineers", "They know what correct means here", "Their labels need no checking later", "Contracts forbid engineers from labelling data"],
+      "answer": 1,
+      "why": "The domain expert is the reference. \"A good task is one where two domain experts would independently reach the same pass/fail verdict\" (<a href=\"https://www.anthropic.com/research/demystifying-evals-for-ai-agents\">Anthropic</a>). Their labels still drift, so version the set." },
+    { "q": "In shadow mode, v2 sees copies of live emails. What must happen to its start_return calls?",
+      "options": ["Sent, then reversed by a manager", "Sent only when under EUR 500", "Recorded, but never sent to Acme", "Dropped without any record at all"],
+      "answer": 2,
+      "why": "Shadow mode means \"Only the responses of the production variant are returned\" (<a href=\"https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html\">AWS</a>). For an agent, writes must not run at all. Record them so you can compare." },
+    { "q": "From Lesson 7: why should Maria's approval card show facts, not \"AI recommends: approve\"?",
+      "options": ["People click approve without reading the rest", "Chat apps can't show the word AI", "Managers are not allowed to see AI", "Recommendations make the card far too long"],
+      "answer": 0,
+      "why": "A recommendation turns the human in the loop into a rubber stamp: many people approve without reading the rest. Give Maria the facts from the order system, and leave the decision to the person (<a href=\"0007-human-in-the-loop-workflows.html\">Lesson 7</a>, section 11)." },
+    { "q": "From Lesson 4: why can a golden set built from raw logs leak data?",
+      "options": ["Logs are always stored as plain CSV", "Logs hold data some users can't see", "Logs can never be read by Bun", "Logs always delete themselves after one week"],
+      "answer": 1,
+      "why": "Anything that touched retrieved rows before a filter ran, like a log, can hold documents the user was never allowed to see. Lesson 4 named \"an eval dataset built from logs\" as one of those places." }
+  ]
+}
+</script>
+
+<h2>12 · Write the result for Dana</h2>
+
+<p>Dana doesn't read scorecards. Dana reads one paragraph and decides. Write the eval result for v2 from your scorecard. It saves as you type.</p>
+
+<script type="application/json" data-practice="l8-eval-report">
+{
+  "title": "Eval result: support agent v2",
+  "maxWords": 150,
+  "fields": [
+    { "key": "verdict", "label": "First line", "hint": "Does v2 go live next week? Yes or no, and the reason in a few words." },
+    { "key": "evidence", "label": "What you tested", "hint": "On what, how many times, graded by whom." },
+    { "key": "finding", "label": "What broke", "hint": "The one finding that decided it, in the customer's words." },
+    { "key": "next", "label": "Next step", "hint": "What happens now, and when you'll know." }
+  ],
+  "checks": [
+    "The first line says v2 doesn't go live yet, and why",
+    "It says the test used 8 real Acme emails from October, each run 3 times, with outcomes agreed by Luis's team",
+    "It names the failure as the customer would see it: told a EUR 1,299 refund was approved and on its way when no manager had approved it",
+    "It says this happened in 1 of 3 runs, and that v1 never did it",
+    "It gives v2's real gains too: messy order ids and unknown orders are handled",
+    "It doesn't claim v2 is better overall from 92% vs 96%, because that gap is a single run",
+    "The next step has an owner and a date: fix the prompt, add the case, re-run the full set",
+    "No eval jargon Dana would have to look up (no pass^k without saying what it means)",
+    "150 words or fewer"
+  ]
+}
+</script>
+
+<p>The hardest check is the sixth. A higher number feels like good news, and it's tempting to put it first. Lead with what the customer would have been told instead. That is the sentence Dana will remember, and it's the one that's true.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 25 minutes</p>
+  <p><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic's "Demystifying evals for AI agents"</a>. It covers everything in this lesson in more depth, from graders and pass^k to reading transcripts, and its example of a support agent with a refund tool is close to Acme's. Then read section 3 of the <a href="https://arxiv.org/html/2406.12045#S3">τ-bench paper</a> to see how a benchmark grades a return by the database it leaves behind.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next: <a href="0009-telemetry-and-roi.html"><strong>Lesson 9, telemetry, ROI and customer health</strong></a> (Stage 9). The eval says the agent works on 8 emails. Production sends it thousands. How do you see every run, what each one costs, when it fails without an error, and whether it saves Acme the time Dana was promised? Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

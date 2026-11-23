@@ -25,8 +25,8 @@ The 12 stages come from [Suraj Sharma's FDE roadmap](https://x.com/suraj_sharma1
 | 5 | 5 · MCP & legacy integration | `lessons/0005-mcp-and-legacy-integration.html` | done |
 | 6 | 3 · Legacy data & ETL | `lessons/0006-legacy-data-and-etl.html` | done |
 | 7 | 7 · Human-in-the-loop & durable workflows | `lessons/0007-human-in-the-loop-workflows.html` | done |
-| 8 | 10 · Evals on customer data | `lessons/0008-evals-on-customer-data.html` | planned |
-| 9 | 9 · Telemetry, ROI & customer health | `lessons/0009-telemetry-and-roi.html` | planned |
+| 8 | 10 · Evals on customer data | `lessons/0008-evals-on-customer-data.html` | done |
+| 9 | 9 · Telemetry, ROI & customer health | `lessons/0009-telemetry-and-roi.html` | done |
 | 10 | 12 · Handoff & self-serve admin | `lessons/0010-handoff-and-self-serve.html` | planned |
 | 11 | 6 · PII guardrails (specialist) | `lessons/0011-pii-guardrails.html` | planned |
 | 12 | 2 · Air-gapped & VPC deployment (specialist) | `lessons/0012-air-gapped-and-vpc.html` | planned |

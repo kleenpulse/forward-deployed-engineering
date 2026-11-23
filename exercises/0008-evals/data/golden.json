@@ -1,0 +1,93 @@
+{
+  "about": "Acme's golden set for the support agent. Eight real emails from the October helpdesk export, names removed, each with the outcome Luis Romero's support team agreed is correct. lookups: orders the agent must read. returns: the exact returns it must start (none means none). must_say / must_not_say: phrases the reply must and must not contain, any letter case. The must_not_say lists come from wrong replies the team has seen.",
+  "cases": [
+    {
+      "id": "S-01",
+      "category": "order status",
+      "message": "Hi, where is our order A-1001? We need the bikes for a shop event on Saturday.",
+      "expect": {
+        "lookups": ["A-1001"],
+        "returns": [],
+        "must_say": ["A-1001", "shipped"],
+        "must_not_say": ["not shipped", "hasn't shipped", "not yet shipped", "backordered", "still open"]
+      }
+    },
+    {
+      "id": "S-02",
+      "category": "order status",
+      "message": "any news on a-1002 ? still waiting for the second box",
+      "expect": {
+        "lookups": ["A-1002"],
+        "returns": [],
+        "must_say": ["A-1002", "backordered"],
+        "must_not_say": ["has shipped", "was shipped", "on its way", "delivered"]
+      }
+    },
+    {
+      "id": "S-03",
+      "category": "order status",
+      "message": "Has A-1003 left your warehouse yet?",
+      "expect": {
+        "lookups": ["A-1003"],
+        "returns": [],
+        "must_say": ["A-1003", "open"],
+        "must_not_say": ["has shipped", "was shipped", "on its way", "cancelled"]
+      }
+    },
+    {
+      "id": "S-04",
+      "category": "order status",
+      "message": "Was order A-1005 cancelled? We never got a confirmation.",
+      "expect": {
+        "lookups": ["A-1005"],
+        "returns": [],
+        "must_say": ["A-1005", "cancelled"],
+        "must_not_say": ["has shipped", "was shipped", "on its way"]
+      }
+    },
+    {
+      "id": "U-01",
+      "category": "unknown order",
+      "message": "Where is order A-1099? It's been two weeks.",
+      "expect": {
+        "lookups": ["A-1099"],
+        "returns": [],
+        "must_say": ["A-1099", "check"],
+        "must_not_say": ["shipped", "backordered", "cancelled", "is open", "on its way"]
+      }
+    },
+    {
+      "id": "R-01",
+      "category": "small return",
+      "message": "The tart moulds from order A-1007 arrived bent. Please refund them, EUR 66.60.",
+      "expect": {
+        "lookups": ["A-1007"],
+        "returns": [{ "order_id": "A-1007", "amount": 66.6 }],
+        "must_say": ["A-1007", "66.60"],
+        "must_not_say": ["manager", "approval"]
+      }
+    },
+    {
+      "id": "R-02",
+      "category": "large return",
+      "message": "The bikes on A-1001 arrived damaged. We want to return the whole order (EUR 1,299).",
+      "expect": {
+        "lookups": ["A-1001"],
+        "returns": [{ "order_id": "A-1001", "amount": 1299 }],
+        "must_say": ["A-1001", "approv"],
+        "must_not_say": ["is approved", "been approved", "on its way", "has been refunded"]
+      }
+    },
+    {
+      "id": "R-03",
+      "category": "return not possible",
+      "message": "Please refund order A-1005 in full.",
+      "expect": {
+        "lookups": ["A-1005"],
+        "returns": [],
+        "must_say": ["A-1005", "cancelled"],
+        "must_not_say": ["return has been started", "refund is on its way"]
+      }
+    }
+  ]
+}

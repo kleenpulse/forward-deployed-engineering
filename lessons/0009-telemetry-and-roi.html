@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 9 · Telemetry, ROI and customer health</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0008-evals-on-customer-data.html">← Lesson 8</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 9 · Stage 9 · about 60 minutes</p>
+<h1>Telemetry, ROI and customer health</h1>
+<p class="subtitle">The pilot has run for four weeks, and the renewal meeting is on Monday. Dana wants four answers: what it costs, whether customers get replies faster, whether the team really uses it, and whether it is working right now. All four are in the agent's telemetry and the helpdesk. So are four easy ways to get each one wrong.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>Four SQL queries over a month of OpenTelemetry spans and helpdesk tickets that give Dana honest numbers: cost per team (each token counted once, priced per model, cache included, without your own eval traffic), the agreed success metric against its baseline, adoption by week, and an alert that catches a failure that raised no errors, without paging anyone on a quiet Sunday. Then you write the one-page note for the renewal meeting.</p>
+</div>
+
+<h2>1 · Four questions before the renewal</h2>
+
+<p>OpenAI's FDE job ad says your success is measured "through production adoption, measurable workflow impact, and eval-driven feedback".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/">OpenAI, Forward Deployed Engineer (FDE) job ad</a>, "About the role", as of November 2026.</span> <a href="0008-evals-on-customer-data.html">Lesson 8</a> was the eval part. This lesson is the other two: does Acme use it, and does it change their work?</p>
+
+<p>Enterprise software is sold for a period and then renewed, or not. The people who look after accounts sum up the risk in a customer health score. Gainsight, which sells software for this, defines it as "a predictive metric that helps Customer Success teams evaluate the likelihood of renewal, growth, or churn", built from inputs "like product usage, support history, NPS, and engagement".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.gainsight.com/blog/customer-health-scores/">Gainsight, "Customer health scores"</a>. A vendor's own definition, so read it as one view, not a standard.</span> As the FDE, you own the usage part, and you are often the first person to see it go wrong.</p>
+
+<p>Dana's four questions, and the trap in each:</p>
+<table>
+  <thead><tr><th>Question</th><th>The tempting answer</th><th>The honest one</th></tr></thead>
+  <tbody>
+    <tr><td>What does it cost, per team?</td><td>Add up every token on every span</td><td>Tokens from model-call spans only, priced per model, cache included, live traffic only</td></tr>
+    <tr><td>Did replies get faster?</td><td>The average wait, all emails</td><td>The metric agreed in <a href="0002-discovery-and-scoping.html">Lesson 2</a>: the median for order-status emails, against the 22-hour baseline</td></tr>
+    <tr><td>Do people use it?</td><td>"The agent answered 90% of emails"</td><td>How often the team sent the agent's draft</td></tr>
+    <tr><td>Is it working right now?</td><td>"No errors in the logs"</td><td>Is the thing customers need still happening?</td></tr>
+  </tbody>
+</table>
+
+<h2>2 · Traces and spans</h2>
+
+<p>To answer any of this you need a record of every run. OpenTelemetry is the open standard for that. A trace is "The path of a request through your application", and "A span represents a unit of work or operation. Spans are the building blocks of Traces." Spans nest: "child spans represent sub-operations."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://opentelemetry.io/docs/concepts/signals/traces/">OpenTelemetry, "Traces"</a> and its section <a href="https://opentelemetry.io/docs/concepts/signals/traces/#spans">"Spans"</a>.</span></p>
+
+<p>For AI systems, OpenTelemetry's GenAI semantic conventions give the spans and attributes standard names. A model call is named "<code>{gen_ai.operation.name} {gen_ai.request.model}</code>", a tool call "<code>execute_tool {gen_ai.tool.name}</code>", and an agent run "<code>invoke_agent {gen_ai.agent.name}</code>".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/open-telemetry/semantic-conventions-genai">OpenTelemetry GenAI semantic conventions</a>, release v0.1.0: <a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/client-inference.md#span-gen_aiclientinference">inference</a>, <a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/execute-tool.md#span-gen_aiexecute_tool">tool</a> and <a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/client-invoke-agent.md#span-gen_aiclientinvoke_agent">agent</a> spans.</span> One run of Acme's agent looks like this:</p>
+
+<figure class="code"><figcaption>one trace = one agent run (gen_ai.usage.* shortened to usage.*)</figcaption><pre><code>invoke_agent support-agent
+│     app.team=support  app.source=live  app.result=answered
+│     helpdesk.ticket_id=HD-48213
+│     usage.input_tokens=4183   <span class="c">← the framework's roll-up of the two chats</span>
+├─ chat small-model
+│     usage.input_tokens=912   usage.cache_read.input_tokens=512
+│     usage.output_tokens=17
+├─ execute_tool get_order
+│     acme.order.status=shipped
+└─ chat large-model
+      usage.input_tokens=3271  usage.cache_read.input_tokens=2400
+      usage.output_tokens=188</code></pre></figure>
+
+<p>The <code>app.*</code> span attributes are Acme's own, added by hand on the root span. The conventions encourage that: "Application developers are encouraged to follow this semantic convention for tools invoked by their own code and to manually instrument any tool calls that automatic instrumentations do not cover." Decide on day one which questions you'll need to answer (which team, which ticket, live or test) and put them on the root span. You can't add them to last month's traces.</p>
+
+<p>Three warnings before you build on these names:</p>
+<ul>
+  <li><strong>They are still changing.</strong> Every page is marked "Status: Development". In 2026 the GenAI conventions moved to their own repository, and its first release renamed metrics, for example replacing the <code>gen_ai.client.token.usage</code> histogram. Write down the version you instrument against.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/CHANGELOG.md">semantic-conventions-genai CHANGELOG</a>, v0.1.0, "Breaking changes". The old pages on opentelemetry.io now say "This page has moved and is no longer maintained in this repository."</span></li>
+  <li><strong>Prompts and replies are personal data.</strong> "Model instructions, user messages, and model outputs are considered sensitive", and instrumentations "SHOULD NOT capture them by default, but SHOULD provide an option for users to opt in."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md#capturing-instructions-inputs-and-outputs">GenAI spans, "Capturing instructions, inputs and outputs"</a>. The attribute <code>gen_ai.input.messages</code> "is likely to contain sensitive information including user/PII data."</span> Turn content capture on only where the contract allows it. Counts, ids and statuses answer most questions without it.</li>
+  <li><strong>Tokens are recorded twice.</strong> More on that next.</li>
+</ul>
+
+<h2>3 · What it costs, per team</h2>
+
+<p>Providers bill by tokens and quote prices per million tokens (MTok).<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://platform.claude.com/docs/en/about-claude/pricing">Anthropic, "Pricing"</a>: model prices are listed per "MTok", and "All prices are in USD". Checked November 2026; prices change, so read them from the page, not from a lesson.</span> So cost is arithmetic on token counts. Three details make it come out wrong:</p>
+
+<p><strong>The same tokens sit on more than one span.</strong> Look at the root span above: the agent framework copied the run's total onto it. The conventions warn about exactly this: "Don't sum <code>gen_ai.usage.*</code> over all spans without filtering by operation name. The same tokens can be reported on multiple types of spans: agent and inference spans, or inference spans from gateways and different layers of the inference infrastructure."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-token-metrics.md#how-to-aggregate-token-usage">GenAI token metrics, "How to aggregate token usage"</a>. It also suggests the token metrics over spans where you can, because "They aren't affected by trace sampling."</span> Count tokens from the <code>chat</code> spans only.</p>
+
+<p><strong>Cached tokens cost less.</strong> With prompt caching, the provider bills the part of the prompt it has seen recently, such as the long system prompt, at a fraction of the input price. Anthropic lists "Cache read (hit) | 0.1x base input price on most models", and adds "What a cache hit costs depends on the model", so keep the multiplier per model.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching">Anthropic, "Pricing", "Prompt caching"</a>. Writing to the cache costs more than a normal input token: "5-minute cache write | 1.25x base input price". The exercise has cache reads only.</span> Then check what your count includes. The conventions say <code>gen_ai.usage.input_tokens</code> "SHOULD include cached tokens". Anthropic's API counts the other way, so the conventions' mapping for it reads: "Anthropic <code>input_tokens</code> excludes cached tokens. Compute: <code>gen_ai.usage.input_tokens = input_tokens + cache_read_input_tokens + cache_write_input_tokens</code>".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/anthropic.md">GenAI conventions, Anthropic page</a>. Langfuse, an LLM observability tool, has the same warning: "Inclusive counts must be converted into exclusive buckets before they are stored" (<a href="https://langfuse.com/docs/observability/features/token-and-cost-tracking">Langfuse, "Model Usage &amp; Cost Tracking"</a>).</span> Get this wrong and you bill every cached token twice.</p>
+
+<p><strong>Your own traffic isn't the customer's usage.</strong> Your Lesson 8 eval ran against production twice: 96 runs. Tag them (<code>app.source=eval</code>) and report them on their own line. Otherwise they make the support team look busier than it is.</p>
+
+<figure class="code"><figcaption>exercises/0009-telemetry/solution.ts · the cost of each chat span</figcaption><pre><code>sum(((c.input - c.cache) * p.input          <span class="c">-- uncached input, full price</span>
+     + c.cache * p.input * p.cache_read     <span class="c">-- cached input, discounted</span>
+     + c.output * p.output) / 1e6)          <span class="c">-- prices are per million tokens</span></code></pre></figure>
+
+<p>At Acme the honest total is USD 6.66 for 1,050 live runs in four weeks. The naive query says USD 35,248.28. Either number goes into a slide. Only one survives the customer's finance team checking the invoice.</p>
+
+<h2>4 · Did it save time? Measure what was agreed</h2>
+
+<p>In Lesson 2 Dana and Luis agreed one success metric: the median time to the first response for order-status emails, from the helpdesk, with a baseline of 22 hours. Report that, measured the same way. Not the average, which a few week-long waits pull up. Not all emails, because the agent only drafts order-status replies.</p>
+
+<p>One trap hides in "measured the same way". Some emails have no response yet. Leave them out and the median improves, because you dropped the slowest cases. They have waited at least until the moment you run the report, so count that wait. At Acme, 27 of 830 emails are still open. Dropping them moves the median from 2.62 to 2.51 hours: small this month, but in a bad week it is the whole story.</p>
+
+<p>Why not just ask people? Because people are bad at judging their own speed. In METR's 2025 study, experienced developers using AI tools "take 19% longer to complete issues". Yet "developers expected AI to speed them up by 24%, and even after experiencing the slowdown, they still believed AI had sped them up by 20%."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/">METR, "Measuring the Impact of Early-2025 AI on Experienced Open-Source Developer Productivity"</a>. METR now marks the speed results as "out of date", and its <a href="https://metr.org/blog/2026-02-24-uplift-update/">2026 follow-up</a> repeats that self-reported speedups "can be quite unreliable". The point here is the gap between felt and measured, not how fast AI makes anyone today.</span> Measured results can be large and real. A study of 5,179 customer support agents found an AI assistant raised <span class="no-terms">"issues resolved per hour, by 14% on average, including a 34% improvement for novice and low-skilled workers"</span>.<span class="sn-ref"></span><span class="sidenote numbered">Brynjolfsson, Li and Raymond, <a href="https://www.nber.org/papers/w31161">"Generative AI at Work"</a> (NBER working paper 31161; published in the Quarterly Journal of Economics, 2025), abstract.</span> That number came from the helpdesk data, not from a survey. Do the same: take the number from the system of record, and quote what people say as colour, not as proof.</p>
+
+<p>Then turn time into money only with numbers the customer gives you. If Acme says an hour of a support agent costs EUR 40, you can multiply. If you make up the hourly cost, the ROI slide falls apart at the first question.</p>
+
+<h2>5 · Adoption, not activity</h2>
+
+<p>"The agent answered 90% of emails" describes the agent. It says nothing about whether anyone used the answers. At Acme the agent writes a draft, and a person sends it or writes their own. The adoption number is the share of order-status emails sent with the agent's draft. In week one that was 56%, not 90%.</p>
+
+<p>Run counts, token totals and "emails touched" are vanity metrics: they rise with use, but also with retries, tests and errors. Gainsight's own table says usage inputs like "Feature adoption, login frequency" are there because they show "value realization". Count the step where a person chose to use the output.</p>
+
+<p>Now look at Acme's weeks: 56%, 58%, 69%, then 49%. Week 4 fell by 20 points. Nobody complained, and the error rate was zero. Something broke, and the next section is how you'd have known on the first day.</p>
+
+<h2>6 · Alert on what customers feel</h2>
+
+<p>Google's SRE book names the four golden signals: "latency, traffic, errors, and saturation. If you can only measure four metrics of your user-facing system, focus on these four." Its definition of errors includes requests that fail "implicitly (for example, an HTTP 200 success response, but coupled with the wrong content)".<span class="sn-ref"></span><span class="sidenote numbered">Google, <i>Site Reliability Engineering</i>, chapter 6, <a href="https://sre.google/sre-book/monitoring-distributed-systems/#xref_monitoring_golden-signals">"Monitoring Distributed Systems", "The Four Golden Signals"</a>.</span> That is a silent failure, and agents produce them all the time.</p>
+
+<p>Here is Acme's. On 17 November the order system's new release started sending a status code nobody had mapped. The MCP server passed it on as <code>unknown</code>, every call succeeded, and the agent did the safe thing: it handed the email to a person. Nothing raised an error. The share of runs handed off jumped from about 4–8% a day to 39–53%, and stayed there for four days until Dana's numbers showed the drop in adoption.</p>
+
+<p>The SRE book separates "what's broken" (the symptom) from "why" (the cause), and advises: "it's better to spend much more effort on catching symptoms than causes".<span class="sn-ref"></span><span class="sidenote numbered">Google SRE book, chapter 6, <a href="https://sre.google/sre-book/monitoring-distributed-systems/#symptoms-versus-causes-g0sEi4">"Symptoms Versus Causes"</a> and <a href="https://sre.google/sre-book/monitoring-distributed-systems/#tying-these-principles-together-nqsJfw">"Tying These Principles Together"</a>.</span> Acme's symptom is "emails the agent couldn't answer". An alert on it catches both of the month's incidents: the planned outage on 3 November, which threw errors, and the silent one, which didn't. An alert on error spans catches only the first.</p>
+
+<p>An alert on errors also fires when nothing is wrong. On two quiet Sundays, one tool call failed and the retry worked. No customer noticed, but with four runs that day the error share was over 5%, so someone would have been paged. The book: "Every page should be actionable", and "If a page merely merits a robotic response, it shouldn't be a page." So the alert needs enough traffic to mean something. Today's rule: more than 20% of live runs handed off, on a day with at least 20 runs.</p>
+
+<div class="callout">
+  <p><strong>The grown-up version: SLOs.</strong> An SLI is "a carefully defined quantitative measure of some aspect of the level of service that is provided", usually "the number of good events divided by the total number of events". An SLO is "a target value or range of values for a service level that is measured by an SLI", and "the error budget is 100% minus the SLO".<span class="sn-ref"></span><span class="sidenote numbered">Google SRE book, <a href="https://sre.google/sre-book/service-level-objectives/#indicators-o8seIAcZ">"Service Level Objectives"</a>; SRE workbook, <a href="https://sre.google/workbook/implementing-slos/#what-to-measure-using-slis">"Implementing SLOs"</a> and <a href="https://sre.google/workbook/alerting-on-slos/#ways-to-alert-on-significant-events">"Alerting on SLOs"</a>.</span> For Acme: SLI = share of live runs the agent answered; SLO = 90% per week; error budget = 10%. Instead of a fixed daily threshold, you alert on the burn rate, "how fast, relative to the SLO, the service consumes the error budget". On 17 November Acme was handing off about half of all runs, five times the 10% budget, so the week's budget was gone in about a day and a half. Start with the simple daily rule; move to SLOs when the customer wants a number in the contract.</p>
+</div>
+
+<h2>7 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0009-telemetry/</code>. The top of <code>harness.ts</code> describes both tables and every attribute. It generates the same month every time: 1,146 traces, 4,659 spans and 1,030 tickets, loaded into PGlite. <code>start.ts</code> holds the four queries most people write first. Every one runs without an error:</p>
+
+<figure class="code"><figcaption>exercises/0009-telemetry/start.ts · the naive cost query</figcaption><pre><code><span class="c">// "Add up the tokens on every span, group by team, multiply by the price."</span>
+select attrs-&gt;&gt;'app.team' as team,
+       count(distinct trace_id)::int as runs,
+       sum((attrs-&gt;&gt;'gen_ai.usage.input_tokens')::int)::int as input_tokens,
+       …
+       (sum(input) * 3.0 + sum(output) * 15.0) / 1000 as cost_usd
+  from spans
+ group by 1 order by 1</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0009-telemetry/start.ts</figcaption><pre><code>FAIL  Counts each token once
+      9,412,576 input and 467,370 output tokens (want 4,310,822 and 214,301)
+FAIL  Prices tokens per MTok, per model, cache included
+      total USD 35248.28 (want 6.66)
+FAIL  Puts the cost on the right team, without eval traffic
+      runs per team: finance 60, returns 160, support 926, null 1146 (want finance 60, returns 160, support 830); support costs USD 14249.38 (want 5.27)
+FAIL  Reports the median, honestly
+      median first response 13.75 h (want 2.62 h; the baseline was 22 h)
+FAIL  Measures adoption, not activity
+      10-26 89.8%, 11-02 87.2%, 11-09 92.8%, 11-16 68.4% (want 10-26 55.7%, 11-02 58.1%, 11-09 69.0%, 11-16 48.5%)
+FAIL  Alerts on what customers feel, even with no errors
+      fired on [2026-11-03, 2026-11-08, 2026-11-15]; missed [2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20] (want it to fire on 2026-11-03, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20)
+FAIL  Stays quiet when nothing is wrong
+      false alarms on [2026-11-08, 2026-11-15] (want none; Sundays have about 4 runs, and a tool error that a retry fixed is one no customer noticed)
+
+0/7 checks pass.
+
+What your numbers tell Dana:
+  Cost: USD 35248.28 for 2292 runs. finance 915.10, returns 2459.66, support 14249.38, no team 17624.14.
+  First response for order-status emails: 13.7 h (baseline 22 h).
+  Adoption by week: 10-26 90%, 11-02 87%, 11-09 93%, 11-16 68%.
+  Alert would have fired on: 2026-11-03, 2026-11-08, 2026-11-15.</code></pre></figure>
+
+<p>Read the last block as Dana would. Every line is wrong, and every line is believable: a large cost, a decent speed-up, strong usage, two alerts. That is what makes bad telemetry dangerous. It doesn't look broken.</p>
+
+<p>Fix the four functions in <code>start.ts</code>. The TODO list in the file follows the checks. Give yourself 30 minutes before you open the solution.</p>
+<ol>
+  <li>Take tokens from <code>chat</code> spans only.</li>
+  <li>Price each chat span with its own model's prices, per million tokens, with cached input at the cache rate. Pass <code>PRICES</code> in as a query parameter.</li>
+  <li>Join each chat span to its run's root span to get the team. Live runs only.</li>
+  <li>The median for order-status emails, counting unanswered ones until <code>REPORT_TIME</code>.</li>
+  <li>Adoption per week: the share of order-status tickets with <code>draft = 'used'</code>.</li>
+  <li>Alert per day when more than 20% of live runs were handed off…</li>
+  <li>…and only on days with at least 20 live runs.</li>
+</ol>
+
+<p>The full solution is in <code>solution.ts</code>. Its cost query and its alert:</p>
+
+<figure class="code"><figcaption>exercises/0009-telemetry/solution.ts · costByTeam()</figcaption><pre><code>with prices as (
+  select * from jsonb_to_recordset($1::jsonb) as p(model text, input numeric, output numeric, cache_read numeric)
+),
+runs as (   <span class="c">-- the team and the source live on the root span only</span>
+  select trace_id, attrs-&gt;&gt;'app.team' as team
+    from spans
+   where parent_id is null and attrs-&gt;&gt;'app.source' = 'live'
+),
+chats as (  <span class="c">-- tokens come from the chat spans, never from the root's roll-up</span>
+  select trace_id,
+         attrs-&gt;&gt;'gen_ai.request.model' as model,
+         (attrs-&gt;&gt;'gen_ai.usage.input_tokens')::bigint as input,
+         (attrs-&gt;&gt;'gen_ai.usage.cache_read.input_tokens')::bigint as cache,
+         (attrs-&gt;&gt;'gen_ai.usage.output_tokens')::bigint as output
+    from spans
+   where attrs-&gt;&gt;'gen_ai.operation.name' = 'chat'
+)
+select r.team,
+       count(distinct r.trace_id)::int as runs,
+       sum(c.input)::int as input_tokens,
+       sum(c.output)::int as output_tokens,
+       sum(((c.input - c.cache) * p.input
+            + c.cache * p.input * p.cache_read
+            + c.output * p.output) / 1e6)::float8 as cost_usd
+  from runs r
+  join chats c using (trace_id)
+  join prices p using (model)
+ group by r.team
+ order by r.team</code></pre></figure>
+
+<figure class="code"><figcaption>exercises/0009-telemetry/solution.ts · alerts()</figcaption><pre><code>select to_char((start_time at time zone 'UTC')::date, 'YYYY-MM-DD') as day
+  from spans
+ where parent_id is null and attrs-&gt;&gt;'app.source' = 'live'
+ group by 1
+having count(*) &gt;= 20                                            <span class="c">-- enough traffic to mean something</span>
+   and avg((attrs-&gt;&gt;'app.result' = 'handed_off')::int) &gt; 0.2      <span class="c">-- the symptom, not the cause</span>
+ order by 1</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0009-telemetry/solution.ts</figcaption><pre><code>PASS  Counts each token once
+      4,310,822 input and 214,301 output tokens (want 4,310,822 and 214,301)
+PASS  Prices tokens per MTok, per model, cache included
+      total USD 6.66 (want 6.66)
+PASS  Puts the cost on the right team, without eval traffic
+      runs per team: finance 60, returns 160, support 830 (want finance 60, returns 160, support 830); support costs USD 5.27 (want 5.27)
+PASS  Reports the median, honestly
+      median first response 2.62 h (want 2.62 h; the baseline was 22 h)
+PASS  Measures adoption, not activity
+      10-26 55.7%, 11-02 58.1%, 11-09 69.0%, 11-16 48.5% (want 10-26 55.7%, 11-02 58.1%, 11-09 69.0%, 11-16 48.5%)
+PASS  Alerts on what customers feel, even with no errors
+      fired on [2026-11-03, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20]; missed [] (want it to fire on 2026-11-03, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20)
+PASS  Stays quiet when nothing is wrong
+      false alarms on [] (want none; Sundays have about 4 runs, and a tool error that a retry fixed is one no customer noticed)
+
+7/7 checks pass.
+
+What your numbers tell Dana:
+  Cost: USD 6.66 for 1050 runs. finance 0.37, returns 1.01, support 5.27.
+  First response for order-status emails: 2.6 h (baseline 22 h).
+  Adoption by week: 10-26 56%, 11-02 58%, 11-09 69%, 11-16 49%.
+  Alert would have fired on: 2026-11-03, 2026-11-17, 2026-11-18, 2026-11-19, 2026-11-20.</code></pre></figure>
+
+<p>Now the story is clear. The agent costs less than a cent a run. Order-status emails get a first reply in a median of 2.6 hours instead of 22. Adoption grew for three weeks. Then a silent failure cut it, and an alert on the right symptom would have caught it on the first morning instead of the fourth.</p>
+
+<p>Try one experiment. In a copy of <code>solution.ts</code>, delete the <code>count(*) &gt;= 20</code> line from the alert. Only check 7 fails: the alert now fires on two Sundays. Undo that, and replace <code>coalesce(first_response_at, $1::timestamptz)</code> with <code>first_response_at</code>. Only check 4 fails, by a tenth of an hour, and in the direction that flatters you.</p>
+
+<h2>8 · Value, or a vanity metric?</h2>
+
+<p>Each card is a number someone might put on Acme's renewal slide. Decide whether it shows value, or only looks good.</p>
+
+<script type="application/json" data-sort="l9-vanity">
+{
+  "buckets": ["Shows value", "Looks good, proves little"],
+  "items": [
+    { "label": "\"12,000 agent runs this month\"", "detail": "From the trace count.", "bucket": 1,
+      "why": "Runs include retries, your own evals and tests, and drafts nobody sent. More runs can even mean more failures. Count what people did with the output." },
+    { "label": "Median first response 2.6 h, down from 22 h", "detail": "Same helpdesk report, same email category, as agreed in week 1.", "bucket": 0,
+      "why": "The agreed success metric, from the system of record, measured the same way as the baseline. This is the headline." },
+    { "label": "\"The agent answered 90% of emails\"", "detail": "From app.result on the root spans.", "bucket": 1,
+      "why": "It describes the agent, not the team. At Acme, staff sent only 56% of drafts in week one. Adoption is what people chose to use." },
+    { "label": "Share of order-status emails sent with the agent's draft, by week", "detail": "56%, 58%, 69%, 49%.", "bucket": 0,
+      "why": "Adoption, with a trend. The week-4 drop is itself valuable: it's the first sign of the silent failure." },
+    { "label": "\"Staff say it saves them an hour a day\"", "detail": "From a survey.", "bucket": 1,
+      "why": "People misjudge their own speed. METR's developers \"believed AI had sped them up by 20%\" while they were measured 19% slower (<a href=\"https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/\">METR</a>). Use it as colour next to a measured number." },
+    { "label": "USD 6.66 for 1,050 live runs, split by team", "detail": "Tokens from chat spans, per-model prices, cache included.", "bucket": 0,
+      "why": "A cost the customer's finance team can check against the invoice, on the team that used it." },
+    { "label": "\"9.4 million tokens processed\"", "detail": "Summed over all spans.", "bucket": 1,
+      "why": "Big, and double counted: the root span repeats the chat spans' tokens. And tokens are a cost, not a benefit." },
+    { "label": "Issues resolved per hour, before and after, same team", "detail": "From the helpdesk.", "bucket": 0,
+      "why": "This is how the 5,179-agent study measured a 14% gain: output per hour from the data (<a href=\"https://www.nber.org/papers/w31161\">Brynjolfsson, Li and Raymond</a>)." },
+    { "label": "\"Zero errors in the logs this week\"", "detail": "Week of 16 November.", "bucket": 1,
+      "why": "That was the week of the silent failure. Errors can be \"an HTTP 200 success response, but coupled with the wrong content\" (<a href=\"https://sre.google/sre-book/monitoring-distributed-systems/#xref_monitoring_golden-signals\">Google SRE</a>)." }
+  ]
+}
+</script>
+
+<h2>9 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l9-recall">
+{
+  "questions": [
+    { "q": "You sum gen_ai.usage.input_tokens over every span in a trace. Why is the total too high?",
+      "options": ["Tool spans also count their tokens twice", "The root span repeats the chat spans", "Cached tokens are always counted three times", "OpenTelemetry always rounds every token count upward"],
+      "answer": 1,
+      "why": "\"The same tokens can be reported on multiple types of spans: agent and inference spans\". So filter by operation name (<a href=\"https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-token-metrics.md#how-to-aggregate-token-usage\">GenAI token metrics</a>)." },
+    { "q": "A chat span has 3,000 input tokens, 2,400 of them read from cache. Input costs USD 3 / MTok, cache reads 0.1x. Input cost?",
+      "options": ["USD 0.009", "USD 0.0072", "USD 0.00072", "USD 0.00252"],
+      "answer": 3,
+      "why": "600 uncached × 3 / 1,000,000 = 0.0018, plus 2,400 cached × 0.3 / 1,000,000 = 0.00072. Total 0.00252. Pricing all 3,000 at full price (0.009) overbills the cache by ten times (<a href=\"https://platform.claude.com/docs/en/about-claude/pricing#prompt-caching\">Anthropic pricing</a>)." },
+    { "q": "Anthropic's API reports input_tokens=600 and cache_read_input_tokens=2,400. What is gen_ai.usage.input_tokens?",
+      "options": ["600, the uncached part", "2,400, the cached part", "3,000, both parts together", "1,800, the two averaged"],
+      "answer": 2,
+      "why": "The convention's input_tokens \"SHOULD include cached tokens\", and Anthropic's \"input_tokens excludes cached tokens\", so add them (<a href=\"https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/anthropic.md\">GenAI conventions, Anthropic</a>)." },
+    { "q": "Why report the median first-response time, not the average?",
+      "options": ["It's the metric agreed in discovery", "Medians are always lower than averages", "Averages can't be computed in Postgres", "The helpdesk doesn't store exact times"],
+      "answer": 0,
+      "why": "Lesson 2 agreed the median, so report the median, measured the same way as the 22-hour baseline. It's also why the agreement chose it: a few week-long waits pull an average up much more." },
+    { "q": "27 order-status emails have no response yet. What do you do with them in the median?",
+      "options": ["Drop them: they have no time", "Count them as zero hours waited", "Count their wait until report time", "Wait a month, then compute it"],
+      "answer": 2,
+      "why": "They've waited at least until now. Dropping them removes the slowest cases and flatters the number." },
+    { "q": "No errors for four days, but the agent hands off half of all emails. Which alert catches it?",
+      "options": ["Error spans above five percent daily", "Handed-off runs above twenty percent daily", "Average span latency above two seconds", "Token usage above last week's level"],
+      "answer": 1,
+      "why": "Alert on the symptom customers feel. Google: \"it's better to spend much more effort on catching symptoms than causes\" (<a href=\"https://sre.google/sre-book/monitoring-distributed-systems/#tying-these-principles-together-nqsJfw\">SRE book</a>)." },
+    { "q": "Staff say the agent saves them an hour a day. How do you use that?",
+      "options": ["As the ROI headline for Dana", "Multiply it by every staff member", "Ignore it: surveys are always wrong", "As colour next to measured numbers"],
+      "answer": 3,
+      "why": "People misjudge their own speed: METR's developers believed in a 20% speedup while measured 19% slower (<a href=\"https://metr.org/blog/2025-07-10-early-2025-ai-experienced-os-dev-study/\">METR</a>). It's still worth quoting, next to the helpdesk's numbers." },
+    { "q": "From Lesson 8: v2 passes R-02 in 2 of 3 runs, v1 in 3 of 3. What is it?",
+      "options": ["A regression that blocks the release", "Noise that averages out over time", "A capability eval that is improving", "A grader error to be ignored"],
+      "answer": 0,
+      "why": "A case that always passed and now fails, even once, is a regression. Regression evals \"should have a nearly 100% pass rate\" (<a href=\"https://www.anthropic.com/research/demystifying-evals-for-ai-agents\">Anthropic</a>)." },
+    { "q": "From Lesson 2: where should the 22-hour baseline come from?",
+      "options": ["The COO's memory of slow weeks", "The helpdesk, the system of record", "A survey of the support team", "The vendor's benchmark for similar companies"],
+      "answer": 1,
+      "why": "Take the baseline from the system of record, and measure the after number the same way. Dana's \"three days\" was a clue to what mattered, not the baseline." }
+  ]
+}
+</script>
+
+<h2>10 · Write the renewal note</h2>
+
+<p>Dana takes one page into Monday's meeting, and will forward it to the CFO. Write it from your numbers. It saves as you type.</p>
+
+<script type="application/json" data-practice="l9-renewal-note">
+{
+  "title": "Pilot results: support agent, 26 October to 20 November",
+  "maxWords": 180,
+  "fields": [
+    { "key": "headline", "label": "Headline", "hint": "The agreed metric, before and after, in one line." },
+    { "key": "use", "label": "Is it used?", "hint": "Adoption, with the trend." },
+    { "key": "cost", "label": "Cost", "hint": "What it cost, for how many runs, which teams." },
+    { "key": "incident", "label": "What went wrong", "hint": "The silent failure: what happened, how long, what changes." },
+    { "key": "ask", "label": "Decision needed", "hint": "What you ask Dana to decide on Monday." }
+  ],
+  "checks": [
+    "The headline gives the median first response for order-status emails, 22 h before and 2.6 h now, from the helpdesk",
+    "It says the median is the metric agreed in week 1, and that unanswered emails were counted, not dropped",
+    "Adoption is the share of emails sent with the agent's draft (56% to 69%, then 49%), not the share the agent answered",
+    "The cost (USD 6.66 for 1,050 live runs) is split by team and leaves out the eval runs",
+    "It explains the week-4 drop plainly: the order system sent a new status, the agent handed half the emails to people for four days, no errors were raised",
+    "It says what changes: an alert on handed-off emails, and the new status mapped",
+    "No survey number is used as the proof of value",
+    "It ends with one clear decision for Dana",
+    "180 words or fewer"
+  ]
+}
+</script>
+
+<p>The fifth check is the one people skip. It feels safer to leave the incident out of a renewal note. Don't. Dana will hear about it anyway, and an account that hears it from you, with the fix already in place, trusts you more than one that hears it from the support team.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 30 minutes</p>
+  <p>Chapter 6 of Google's SRE book, <a href="https://sre.google/sre-book/monitoring-distributed-systems/">"Monitoring Distributed Systems"</a>. It is about servers, not agents, and almost every idea carries over: golden signals, symptoms before causes, pages that must be actionable. Then skim the <a href="https://github.com/open-telemetry/semantic-conventions-genai/tree/main/docs/gen-ai">GenAI semantic conventions</a>, starting with the inference span and "How to aggregate token usage", and note the version you read.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next (planned): <strong>Lesson 10, handoff and self-serve admin</strong> (Stage 12). Acme renews. Now the agent has to keep running after you leave: who changes the prompt, adds an approver, or reads the alert at 3 a.m.? Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>
