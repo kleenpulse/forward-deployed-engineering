@@ -33,7 +33,7 @@
 
 <p>Until now the agent ran in your company's cloud and called a model provider over the internet. <a href="0011-pii-guardrails.html">Lesson 11</a> kept personal data out of those calls. Some customers go further: nothing leaves at all. Job ads show where: in one analysis of 1,000 FDE ads, government and defence made up 18% of the ads that name an industry, with "air-gapped systems, FedRAMP compliance, classified environments" as the norm.<span class="sn-ref"></span><span class="sidenote numbered">Bloomberry, <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">"I analyzed 1,000 forward deployed engineer jobs"</a>. The same figure is in the <a href="../reference/fde-roadmap-map.html">roadmap reference</a>.</span> Banks and hospitals ask for parts of it too. There are four common setups:</p>
 <table>
-  <thead><tr><th>Setup</th><th>Where the model runs</th><th>What leaves the customer's network</th><th>What you can do from your desk</th></tr></thead>
+  <thead><tr><th>Setup</th><th>Where the model runs</th><th>What goes out</th><th>From your desk</th></tr></thead>
   <tbody>
     <tr><td>Your cloud, a provider's API (Acme)</td><td>At the model provider</td><td>Every request, masked</td><td>Everything</td></tr>
     <tr><td>The customer's VPC, their cloud's model service</td><td>At the cloud provider, reached by a private endpoint</td><td>Nothing over the internet. Read what the cloud keeps.</td><td>What their cloud roles allow</td></tr>
