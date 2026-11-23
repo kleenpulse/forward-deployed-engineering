@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 2 · Discovery and scoping</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0001-the-real-job-behind-the-roadmap.html">← Lesson 1</a>
+  <a href="0003-enterprise-identity-for-agents.html">Lesson 3 →</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 2 · Stage 11 · about 60 minutes</p>
+<h1>Discovery and scoping: find the real problem first</h1>
+<p class="subtitle">Before an FDE writes any code, they find out what actually hurts, how the customer will know it's fixed, and what will block the work. Then they put it on one page.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>You'll run a discovery on a written customer scenario and turn it into a one-page scoped plan, a mini SOW: the problem in the customer's words, one success metric with a baseline, what's in and out of scope, the blockers, and a 4-week plan.</p>
+</div>
+
+<h2>1 · Why discovery comes first</h2>
+
+<p>Lesson 1 found the roadmap's biggest blind spot. Working with customers is the most common duty in FDE job ads (55%), but the roadmap puts discovery at Stage 11.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry, "What I learned analyzing 1K forward deployed engineer jobs"</a>, updated Jan 2026.</span> OpenAI's FDE ad lists the job in the order it happens: "own discovery, technical scoping, system design, build, and production rollout". Further down it asks you to "scope work, sequence delivery, and remove blockers early" and to "spot risks early". It measures success "through production adoption, measurable workflow impact".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/">OpenAI, Forward Deployed Engineer (FDE), San Francisco</a>, job ad, read Nov 2026.</span> You can't show impact on a workflow you never measured.</p>
+
+<p><strong>Discovery</strong> is the part where you talk to the customer's people and look at their systems. It has three outputs: the real problem, the number that will show it's fixed, and the things that will block you. <strong>Scoping</strong> turns those into a plan: what you'll build in the first weeks and, just as important, what you won't.</p>
+
+<p>Why be this careful? A guide by Anthropic and Accenture on moving AI from pilot to production warns that "pilots are designed for success". Teams are hand-picked and budgets are protected, which makes pilots "unrepresentative of the conditions under which AI programs run in production". Their first step is a four-part definition of the job the AI will do: <em>user, task, output, and a measurable quality threshold</em>.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://claude.com/resources/articles/deploying-ai-from-pilot-to-production">Anthropic with Accenture, "Deploying AI from pilot to production"</a>, Sept 2026.</span> Discovery is how you fill in those four parts with facts instead of guesses.</p>
+
+<h2>2 · Meet the customer</h2>
+
+<p>You'll use this scenario for the rest of the lesson. Read it once now. You'll come back to it.</p>
+
+<div class="callout">
+  <p class="kicker">Fictional scenario · Northfield Supply and everyone in it are made up</p>
+  <p><strong>Northfield Supply</strong> sells industrial parts (bearings, valves, belts) to factories. It has 900 staff. A support team of 38 answers about 3,000 customer emails a week in a helpdesk. Orders live in an on-prem order system. Your company sells an AI platform, Northfield has signed a 4-week pilot, and you are the FDE. You get four 30-minute interviews. Each shows the first answer you got, then the question that got a useful one.</p>
+
+  <p><strong>Dana Okafor, Chief Operating Officer</strong> (the executive sponsor)<br>
+  First answer: "Customers wait three days for a reply. I want AI handling all customer email by the end of the quarter. The board asks about AI at every meeting."<br>
+  <em>You asked: "When did slow replies last cost you something?"</em><br>
+  "Two weeks ago. Our biggest account emailed eleven times about one late shipment, then called me directly. I don't want that call again."</p>
+
+  <p><strong>Luis Romero, support team lead</strong> (a daily user)<br>
+  First answer: "Honestly, an AI assistant sounds amazing. We'd love it."<br>
+  <em>You asked: "Walk me through the last email you answered."</em><br>
+  "Where's my order. Like most of them. I open the order system, copy the tracking number, open the carrier's site, check the date, and paste it into a reply. Four or five minutes. Yesterday I did about seventy. The bad ones are when the carrier says one date and our system says another. Last month someone on my team quoted our system's date, it was wrong, and the customer cancelled a $40,000 order."</p>
+
+  <p><strong>Mei Tanaka, IT security manager</strong><br>
+  First answer: "Sounds fine, as long as it's secure."<br>
+  <em>You asked: "What happened with the last new tool someone wanted to bring in?"</em><br>
+  "It went through our security questionnaire. That took seven weeks, mostly waiting for the vendor's answers. Staff sign in with Microsoft Entra ID, and we don't approve apps with their own passwords. The order system has a read-only replica for reporting. To read it you need a service account, which means a ticket and sign-off from the finance systems team. They own that data."</p>
+
+  <p><strong>Sam Whitfield, in-house lawyer</strong><br>
+  First answer: "Legal has no objection in principle."<br>
+  <em>You asked: "Has any customer data needed special handling before?"</em><br>
+  "Yes. The emails include names, phone numbers and delivery addresses, so I need to know where they're stored and for how long. And one contract, with a German customer, says their data is processed only in the EU. Nobody has checked what that means for an AI tool."</p>
+
+  <p><strong>The helpdesk report you asked for</strong> (last 30 days): 12,600 emails. 41% tagged "order status". Median first-response time 19 hours, and 22 hours for order-status emails. One email in ten waited more than three days.</p>
+</div>
+
+<h2>3 · Ask about the past, not the future</h2>
+
+<p>Look at the first answers. They're friendly and almost useless: a wish ("all customer email by the end of the quarter"), a compliment ("sounds amazing") and two polite non-answers. That's normal. People are kind, and they're poor at predicting what they'll do.</p>
+
+<p>Rob Fitzpatrick wrote a short book about exactly this: <em>The Mom Test: how to talk to customers &amp; learn if your business is a good idea when everyone is lying to you</em>. It has three rules. <strong>Talk about their life instead of your idea. Ask about specifics in the past instead of generics or opinions about the future. Talk less and listen more.</strong><span class="sn-ref"></span><span class="sidenote numbered">Rob Fitzpatrick, <a href="https://www.momtestbook.com/"><em>The Mom Test</em></a>. The name: these are questions "even your mom can't lie to you about", though she wants to be nice about your idea.</span></p>
+
+<p>Eric Migicovsky, a Y Combinator partner who founded Pebble, based his lecture "How to Talk to Users" on that book.<span class="sn-ref"></span><span class="sidenote numbered">Migicovsky's own note on the talk: <a href="https://ericmigi.com/blog/startup-school-how-to-talk-to-users">ericmigi.com</a>.</span> He names three common mistakes: pitching your idea, asking hypotheticals ("If we built this feature, would you be interested in using it or would you be interested in paying for it?") and talking too much. Then he gives five questions to ask instead:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.ycombinator.com/blog/startup-school-week-1-recap-kevin-hale-and-eric-migicovsky">Y Combinator, "Startup School Week 1 Recap"</a>, with the lecture transcript. He also warns: "Users in general are not great at identifying the next features that they want in the product."</span></p>
+
+<ol>
+  <li>What is the hardest part about doing the thing you're trying to solve?</li>
+  <li>Tell me about the last time you encountered this problem.</li>
+  <li>Why was this hard?</li>
+  <li>What, if anything, have you done to try to solve this problem?</li>
+  <li>What don't you love about the solutions you've already tried?</li>
+</ol>
+
+<p>Every follow-up in the scenario uses this idea. "When did slow replies last cost you something?" turned Dana's wish into a real event with a real cost. "Walk me through the last email you answered" found the real task, how long it takes, and the real risk: a wrong delivery date loses an order. You'd never get that last fact by asking Luis what features he wants.</p>
+
+<table>
+  <thead><tr><th>Weak: invites a guess</th><th>Better: asks what happened</th></tr></thead>
+  <tbody>
+    <tr><td>Would your team use an AI that drafts replies?</td><td>Tell me about the last reply that took you more than ten minutes.</td></tr>
+    <tr><td>How much time would this save you?</td><td>How many order-status emails did you answer yesterday?</td></tr>
+    <tr><td>Is security going to be a problem?</td><td>What happened with the last new tool someone brought in?</td></tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <p><strong>Three habits for enterprise interviews.</strong> Interview stakeholders one at a time, so each answer is theirs and not the room's. When someone says a number, ask "where does that number come from?" And write down their exact words. Migicovsky's advice is "Take notes, take detailed notes", because you won't know which facts matter until later. Those exact words go into your plan.</p>
+</div>
+
+<h2>4 · Find the real metric</h2>
+
+<p>Dana wants "AI handling all customer email". That's a solution, not a metric. You need one number that both sides agree will show the project worked.</p>
+
+<p>Anthropic's guide to success criteria says good criteria are specific and measurable: "Instead of 'good performance,' specify 'accurate sentiment classification.'" Its example of a good criterion ends with "a 5% improvement over the current baseline".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://platform.claude.com/docs/en/test-and-evaluate/define-success">Anthropic docs, "Define your success criteria"</a>. The other two tests it names: achievable and relevant.</span> The baseline is the number today. Without it, week 4 has nothing to compare against. Anthropic's enterprise guide adds: "Before launching any pilot, establish concrete success metrics that stakeholders understand and accept."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://claude.com/resources/guides/the-enterprise-ai-transformation-guide/lay-the-foundation">Anthropic, "The enterprise AI transformation guide: Lay the foundation"</a>. It also says most successful pilots run 8–12 weeks, so 4 weeks is a short one.</span></p>
+
+<p>A metric is ready for the plan when it has four parts:</p>
+<ul>
+  <li><strong>What's counted, narrowly.</strong> "First-response time for order-status emails", not "customer satisfaction".</li>
+  <li><strong>Where it comes from.</strong> A system of record (here, the helpdesk), not someone's memory.</li>
+  <li><strong>The baseline.</strong> Its value today: a median of 22 hours for order-status emails.</li>
+  <li><strong>A target, and who agreed to it.</strong> Agreed with Dana and Luis in week 1, in writing.</li>
+</ul>
+
+<p>Now look at Dana's "three days". The helpdesk says the median wait is 19 hours, and one email in ten waits more than three days. Both are true. Dana remembers the worst cases, like her biggest account's eleven emails. So take the baseline from the system, and treat her memory as a clue to what she cares about.</p>
+
+<p>Then pick a narrow slice. OpenAI's customer success teams use an impact/effort grid to choose AI use cases. They describe the high-impact, low-effort corner as "quick wins with strong impact and low effort—often the best place to start building momentum".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.com/business/guides-and-resources/identifying-and-scaling-ai-use-cases/">OpenAI, "Identifying and scaling AI use cases"</a>. High-value, high-effort ideas "typically require more time, planning, and resources to build".</span> Order-status emails are 41% of the volume, follow one routine, and only need read-only data. Returns, refunds and angry complaints aren't quick wins.</p>
+
+<h2>5 · Spot the blockers early</h2>
+
+<p>OpenAI's ad says "remove blockers early". Google Cloud's FDE ad names what they usually are: "integration complexities, data readiness issues, and state-management challenges that prevent AI from reaching enterprise-grade maturity".<span class="sn-ref"></span><span class="sidenote numbered">Quoted in <a href="https://blog.pragmaticengineer.com/the-pulse-forward-deployed-engineering-heats-up-again/">The Pragmatic Engineer, "Forward deployed engineering heats up again"</a>, May 2026.</span> In discovery, ask about each of these in the first week. Any one of them can take longer than your whole pilot.</p>
+
+<table>
+  <thead><tr><th>Blocker</th><th>Ask</th><th>At Northfield</th></tr></thead>
+  <tbody>
+    <tr><td>Data access</td><td>Which system holds the data, and who approves read access?</td><td>Order-system replica. Service account, a ticket, sign-off from the finance systems team.</td></tr>
+    <tr><td>Security review</td><td>What must a new vendor pass, and how long did the last one take?</td><td>Security questionnaire. The last one took seven weeks.</td></tr>
+    <tr><td>Identity</td><td>How do staff sign in, and who may see what?</td><td>SSO through Microsoft Entra ID only. Lesson 3 covers this.</td></tr>
+    <tr><td>Personal data and law</td><td>Which data needs special care, and where must it stay?</td><td>PII in every email. Data residency: one customer's data stays in the EU.</td></tr>
+    <tr><td>Data quality</td><td>Do two systems ever disagree?</td><td>Carrier date vs. order-system date. A wrong one cost a $40,000 order.</td></tr>
+    <tr><td>Owner</td><td>Who decides, and who clears blockers between teams?</td><td>Dana, the executive sponsor.</td></tr>
+  </tbody>
+</table>
+
+<p>The last row matters more than it looks. The Anthropic and Accenture guide says that without a single owner for AI outcomes, "it becomes difficult to measure success, make tradeoffs, and maintain accountability".</p>
+
+<p><strong>Plan around the security review.</strong> Seven weeks is longer than your 4-week pilot, and you can't speed it up by working harder. What you can do: start it on day one, agree in writing what you may do while it runs (for example, build and test on past emails that Sam has cleared), and say now that go-live moves if the review is late. Discovering that in week 3 is how pilots fail.</p>
+
+<h2>6 · Sort the questions</h2>
+
+<p>Each of these is something you could ask at Northfield. Decide whether it gets you facts from the past, or invites a guess or a compliment. Commit before you read the feedback.</p>
+
+<script type="application/json" data-sort="l2-questions">
+{
+  "buckets": ["Gets facts from the past", "Invites a guess or a compliment"],
+  "items": [
+    { "label": "\"Would you use an assistant that drafts your replies?\"", "detail": "To Luis.", "bucket": 1,
+      "why": "A hypothetical about your idea. Migicovsky's example of this mistake is almost the same sentence: \"If we built this feature, would you be interested in using it?\" (<a href=\"https://www.ycombinator.com/blog/startup-school-week-1-recap-kevin-hale-and-eric-migicovsky\">YC</a>). Luis will say yes to be nice." },
+    { "label": "\"Tell me about the last order-status email you answered.\"", "detail": "To Luis.", "bucket": 0,
+      "why": "This is Migicovsky's question 2, \"tell me about the last time that you encountered this problem\". It gets you the real steps, the real time, and the real risk." },
+    { "label": "\"What's the hardest part of answering customer emails?\"", "detail": "To anyone on the support team.", "bucket": 0,
+      "why": "Migicovsky's question 1. It's about their work, not your idea. Follow it with \"tell me about the last time\" to get a specific case." },
+    { "label": "\"Don't you think AI could save your team hours?\"", "detail": "To Dana.", "bucket": 1,
+      "why": "A leading question that pitches your idea. The Mom Test's first rule: talk about their life instead of your idea (<a href=\"https://www.momtestbook.com/\">The Mom Test</a>). She'll agree, and you'll learn nothing." },
+    { "label": "\"What have you already tried to speed this up?\"", "detail": "To Luis.", "bucket": 0,
+      "why": "Migicovsky's question 4. If they've tried nothing, the pain may be smaller than it sounds. If they built a spreadsheet or hired temps, it's real, and you learn what didn't work." },
+    { "label": "\"How much would you pay for a tool like this?\"", "detail": "To Dana.", "bucket": 1,
+      "why": "\"Would you be interested in paying for it?\" is one of Migicovsky's examples of a hypothetical. Ask what slow replies cost them already instead." },
+    { "label": "\"How many of yesterday's emails were about order status?\"", "detail": "To Luis, then check in the helpdesk.", "bucket": 0,
+      "why": "Specific and in the past, so it has a true answer. Then check it against the helpdesk, which says 41%." },
+    { "label": "\"What features would the perfect tool have?\"", "detail": "To the support team.", "bucket": 1,
+      "why": "Migicovsky: \"Users in general are not great at identifying the next features that they want in the product.\" You'll get a wish list, not a problem." },
+    { "label": "\"Where does the three-day figure come from?\"", "detail": "To Dana.", "bucket": 0,
+      "why": "It turns a remembered number into a lead you can check. The helpdesk shows a 19-hour median, with one email in ten waiting more than three days. Both facts go in your notes." }
+  ]
+}
+</script>
+
+<h2>7 · Write the scoped plan</h2>
+
+<p>An SOW is the contract document that says what will be delivered, by when, and what isn't included. TechTarget lists its usual sections: background, purpose and objectives, scope of work, tasking and deliverables, standards and testing, acceptance criteria, and payment.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.techtarget.com/it-strategy/definition/statement-of-work-SOW">TechTarget, "What is a statement of work (SOW)?"</a></span> You don't need the legal version to practise. Your one-page plan keeps the parts an engineer owns, and drops payment:</p>
+
+<ol>
+  <li><strong>The problem, in their words.</strong> A quote, not your summary.</li>
+  <li><strong>One success metric.</strong> What's counted, from which system, the baseline, the target.</li>
+  <li><strong>In scope.</strong> Which work, which users, which data, and what the AI may do on its own.</li>
+  <li><strong>Out of scope.</strong> What someone asked for, or will assume, that you won't do yet.</li>
+  <li><strong>Risks and blockers.</strong> Each with an owner on the customer's side and a start date.</li>
+  <li><strong>A 4-week plan.</strong> One line per week. Week 4 ends with a decision.</li>
+</ol>
+
+<p>Don't skip the out-of-scope list. TechTarget again: "Defining the scope statement up front keeps the project from growing in unexpected, unnecessary ways." That growth is called scope creep. A written "not now" list lets you say no politely, by pointing at something everyone already agreed to.</p>
+
+<p>Warm up with Northfield. For each item, decide whether it belongs in the first four weeks.</p>
+
+<script type="application/json" data-sort="l2-scope">
+{
+  "buckets": ["In the first 4 weeks", "Out of scope for now"],
+  "items": [
+    { "label": "Draft replies to order-status emails for an agent to check and send", "bucket": 0,
+      "why": "This is the quick win: 41% of email, one routine, read-only data, and a human in the loop on every reply." },
+    { "label": "Send replies automatically, without an agent checking them", "bucket": 1,
+      "why": "Luis told you a wrong date already cost a $40,000 order, and the carrier and order system sometimes disagree. Earn trust on drafts first. Lesson 7 covers approval gates." },
+    { "label": "Returns, refunds and complaint emails", "bucket": 1,
+      "why": "High effort: each one needs judgement and often writes to other systems. Dana asked for \"all customer email\", so writing this down is exactly what stops scope creep." },
+    { "label": "A read-only service account for the order-system replica", "bucket": 0,
+      "why": "Without order data there are no drafts. It needs a ticket and the finance systems team's sign-off, so it starts in week 1." },
+    { "label": "Measuring order-status first-response time before and after", "bucket": 0,
+      "why": "This is the success metric. The baseline (a 22-hour median) comes from the helpdesk, and week 4 measures the same thing the same way." },
+    { "label": "A chatbot on Northfield's public website", "bucket": 1,
+      "why": "Nobody in the interviews asked for it, and it brings new risks: unknown users, no agent checking. A fine idea for later, not this pilot." },
+    { "label": "Emails from the German customer with the EU-only contract", "bucket": 1,
+      "why": "Sam says nobody has checked what that clause means for an AI tool. Leave this customer out until legal answers in writing, and say so in the plan." },
+    { "label": "Signing agents in through Microsoft Entra ID", "bucket": 0,
+      "why": "Mei said they don't approve apps with their own passwords. If SSO isn't in scope, nothing goes live at all. That's Lesson 3." }
+  ]
+}
+</script>
+
+<p>Now write the plan. Use the scenario's facts, not new ones. It saves as you type, and <strong>Copy as Markdown</strong> puts it on your clipboard. The self-check list is your feedback, so tick a box only when it's clearly true.</p>
+
+<script type="application/json" data-practice="l2-plan">
+{
+  "title": "Scoped plan · Northfield Supply pilot",
+  "maxWords": 250,
+  "fields": [
+    { "key": "problem", "label": "The problem, in their words", "hint": "Quote a stakeholder. Name the one task, not \"customer email\"." },
+    { "key": "metric", "label": "One success metric", "hint": "What's counted, from which system, the baseline today, the target, who agreed." },
+    { "key": "in", "label": "In scope", "hint": "Which emails, which users, which data, and what the AI may do on its own." },
+    { "key": "out", "label": "Out of scope", "hint": "What someone asked for or will assume, that you won't do in 4 weeks." },
+    { "key": "blockers", "label": "Risks and blockers", "hint": "Each one with a customer-side owner and the week you start it." },
+    { "key": "plan", "label": "4-week plan", "hint": "One line per week. Week 4 ends with a decision." }
+  ],
+  "checks": [
+    "The problem is a quote from Dana, Luis, Mei or Sam, and names one kind of email, not all customer email",
+    "The metric names what's counted, the system it comes from, a baseline number and a target",
+    "The baseline comes from the helpdesk report, not from Dana's \"three days\"",
+    "Out of scope has at least three items, including auto-sending and the EU-only customer",
+    "In scope says a person checks every reply before a customer sees it",
+    "Every blocker names a person or team at Northfield who owns it",
+    "The security questionnaire starts in week 1, and the plan says what happens if it's late",
+    "SSO through Entra ID appears in scope or in the blockers",
+    "Week 4 measures the metric against the baseline and ends with a decision meeting",
+    "250 words or fewer"
+  ]
+}
+</script>
+
+<details class="callout">
+  <summary><strong>Compare with one possible plan</strong> (open it after you've written yours)</summary>
+  <p><strong>Problem:</strong> "Where's my order. Like most of them." (Luis). Order-status emails are 41% of volume, take 4–5 minutes each, and a wrong delivery date has already cost a $40,000 order.</p>
+  <p><strong>Metric:</strong> Median first-response time for order-status emails, from the helpdesk. Baseline 22 hours. Target agreed with Dana and Luis in week 1.</p>
+  <p><strong>In scope:</strong> AI drafts replies to English order-status emails for 6 agents on Luis's team. It reads the order-system replica and the carrier's tracking status, and shows both dates when they differ. An agent checks and sends every reply.</p>
+  <p><strong>Out of scope:</strong> Sending without an agent. Returns, refunds and complaints. The EU-only customer until Sam confirms in writing. The website chatbot. Writing anything back to the order system.</p>
+  <p><strong>Blockers:</strong> Security questionnaire (Mei), submitted day 1. Last time it took 7 weeks; until it clears, we work only on past emails Sam has approved, and go-live moves. Replica service account (finance systems team), ticket day 1. Entra ID SSO for the drafting screen (Mei). Data storage and retention answers (Sam), week 1.</p>
+  <p><strong>Plan:</strong> Week 1: access tickets, questionnaire, metric agreed. Week 2: drafts for 200 past emails, graded by Luis's team like an eval. Week 3: shadow mode on live email if security has cleared. Week 4: agents use drafts; measure against the baseline; Dana decides to expand, fix or stop.</p>
+</details>
+
+<h2>8 · Check yourself</h2>
+
+<p>Answer from memory. The last two questions come from Lesson 1.</p>
+
+<script type="application/json" data-quiz="l2-recall">
+{
+  "questions": [
+    { "q": "A daily user says your idea \"sounds amazing\". What should you do next?",
+      "options": ["Ask them to walk through their last task", "Ask which features they would want the most", "Ask how much they would pay each month", "Note it down as proof of strong demand"],
+      "answer": 0,
+      "why": "A compliment isn't data. Get back to \"specifics that have already occurred in the user's life\" (<a href=\"https://www.ycombinator.com/blog/startup-school-week-1-recap-kevin-hale-and-eric-migicovsky\">Migicovsky, YC</a>). Features and prices are hypotheticals." },
+    { "q": "Dana says customers wait \"three days\". The helpdesk shows a 19-hour median. What goes in the plan as the baseline?",
+      "options": ["Three days, Dana's number", "The average of both", "19 hours, from helpdesk", "Neither; measure again later"],
+      "answer": 2,
+      "why": "The baseline comes from the system of record. Dana's number is a clue: one email in ten does wait over three days, and those are the ones she hears about." },
+    { "q": "Which of these is ready to be the success metric?",
+      "options": ["Customers are a lot happier with support", "Order-status replies: median 22 hours to 4", "Agents feel much faster with the assistant", "All customer email is handled by AI"],
+      "answer": 1,
+      "why": "It's specific and measurable, and it has a baseline and a target, as <a href=\"https://platform.claude.com/docs/en/test-and-evaluate/define-success\">Anthropic's success-criteria guide</a> asks. \"All email handled by AI\" is a solution, not a metric." },
+    { "q": "The last security review took seven weeks. Your pilot is four. What's the best move?",
+      "options": ["Skip it, because it's only a pilot", "Wait until the code is fully finished", "Ask the executive sponsor to overrule it", "Start it on day one, in writing"],
+      "answer": 3,
+      "why": "\"Remove blockers early\" (<a href=\"https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/\">OpenAI's FDE ad</a>). Start it in week 1, agree what you may do while it runs, and say up front that go-live moves if it's late." },
+    { "q": "Why does a scoped plan list what's out of scope?",
+      "options": ["Lawyers require it in every contract", "It makes the plan look thorough", "It keeps the project from growing", "It lets the customer add things"],
+      "answer": 2,
+      "why": "\"Defining the scope statement up front keeps the project from growing in unexpected, unnecessary ways\" (<a href=\"https://www.techtarget.com/it-strategy/definition/statement-of-work-SOW\">TechTarget</a>)." },
+    { "q": "OpenAI's impact/effort grid suggests starting where?",
+      "options": ["High impact, high effort", "High impact, low effort", "Low impact, low effort", "Whatever the executive wants"],
+      "answer": 1,
+      "why": "\"Quick wins with strong impact and low effort—often the best place to start building momentum\" (<a href=\"https://openai.com/business/guides-and-resources/identifying-and-scaling-ai-use-cases/\">OpenAI</a>). High-value, high-effort projects come after." },
+    { "q": "From Lesson 1: which duty showed up most often in the 1,000 FDE job ads?",
+      "options": ["Building and deploying AI", "Integrating systems and APIs", "Writing internal sales tools", "Working directly with customers"],
+      "answer": 3,
+      "why": "Working with customers: 55%. Building AI/ML: 37%. Integration: 32% (<a href=\"https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/\">Bloomberry</a>). That's why this lesson comes second." },
+    { "q": "From Lesson 1: which three roadmap stages are specialist, not core?",
+      "options": ["Stages 1, 5 and 11", "Stages 3, 7 and 9", "Stages 2, 6 and 8", "Stages 4, 10 and 12"],
+      "answer": 2,
+      "why": "Air-gapped and VPC deployment (2), PII cryptography (6) and on-prem inference (8) are for regulated or on-prem customers. Discovery (11) is needed by every deployment." }
+  ]
+}
+</script>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 20 minutes</p>
+  <p><a href="https://www.ycombinator.com/blog/startup-school-week-1-recap-kevin-hale-and-eric-migicovsky">"How to Talk to Users"</a> by Eric Migicovsky, in Y Combinator's Startup School recap. Read his part of the transcript, or <a href="https://www.youtube.com/watch?v=MT4Ig2uqjTc">watch the lecture</a>. It's for founders, but swap "user" for "stakeholder" and it's an FDE discovery guide. Pay attention to the five questions and to how he takes notes. Then, if you want the whole method, read <a href="https://www.momtestbook.com/"><em>The Mom Test</em></a>. It takes about two hours.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/fde-course/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next: <a href="0003-enterprise-identity-for-agents.html"><strong>Lesson 3, enterprise identity for agents.</strong></a> Mei's rule, "we don't approve apps with their own passwords", is where it starts: SSO, SCIM, and making an agent see only what its user may see. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

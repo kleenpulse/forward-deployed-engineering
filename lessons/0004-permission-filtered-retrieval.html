@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 4 · Permission-filtered retrieval</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0003-enterprise-identity-for-agents.html">← Lesson 3</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 4 · Stage 4 · about 60 minutes</p>
+<h1>Permission-filtered retrieval</h1>
+<p class="subtitle">An enterprise agent searches the customer's documents before it answers. It must only ever find what the person asking may read. This lesson is about where that filter goes, and why "after the search" is the wrong place.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>A search function on real Postgres that returns only the rows the asking user may see, cites every source, and abstains when nothing permitted matches well enough. You'll also be able to explain, in under a minute, why filtering the results <em>after</em> ranking is wrong. That explanation is what a customer's security team wants to hear.</p>
+</div>
+
+<h2>1 · The question every security review asks</h2>
+
+<p>Picture the job. You're deploying a support agent for Acme. Your company also runs the same product for Globex, and both customers' documents sit in one shared database: a <em>multi-tenant</em> setup. Inside Acme, support staff may read the refund policy, but not HR's salary bands or finance's fraud review.</p>
+
+<p>RAG makes this harder than in a normal app. The search step decides what the model reads, and the model can repeat anything it reads. So the first question in a customer's security review is: <strong>"can the agent ever show my staff a document they couldn't open themselves?"</strong></p>
+
+<p>The OWASP Top 10 for LLM applications lists this risk by name. Its entry on vector and embedding weaknesses warns about "unauthorized access & data leakage", and about cross-context leaks "in multi-tenant environments where multiple classes of users or applications share the same vector database". Its fixes are "permission-aware vector and embedding stores" and "strict logical and access partitioning of datasets".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://genai.owasp.org/llmrisk/llm082025-vector-and-embedding-weaknesses/">OWASP, "LLM08:2025 Vector and Embedding Weaknesses"</a>. Its neighbour, <a href="https://genai.owasp.org/llmrisk/llm022025-sensitive-information-disclosure/">LLM02:2025 Sensitive Information Disclosure</a>, adds: "Only grant access to data that is necessary for the specific user or process."</span></p>
+
+<p>So there are two walls to build, and they are different:</p>
+<ul>
+  <li><strong>Tenant isolation:</strong> an Acme user never touches a Globex row. One wrong row here can end the contract.</li>
+  <li><strong>Document access:</strong> inside Acme, each document has an ACL, a list of the groups allowed to read it. Alice in support reads what <code>everyone</code> and <code>support</code> may read, and nothing else.</li>
+</ul>
+
+<h2>2 · Filter before you rank, not after</h2>
+
+<p>The tempting design is the one most RAG tutorials show: search everything, take the top-k best matches, then drop the ones the user may not see. This is called post-filtering. It fails in two separate ways.</p>
+
+<p><strong>It leaks.</strong> The forbidden rows have already left the database. They are now in your process, and anything that touches them before the filter runs holds data the user may not see: a debug log of "what we retrieved", a trace in your telemetry, a cache, an eval dataset built from logs, or the prompt itself if someone filters in the wrong place. Each of these is one small mistake away from a leak, and none of them shows up in a demo.</p>
+
+<p><strong>It starves.</strong> If the top-k slots are filled by documents the user can't see, the filter leaves few or none. The user gets "no results" while a perfectly good permitted document sat in sixth place. The pgvector docs state this plainly for vector search: "With approximate indexes, filtering is applied after the index is scanned. If a condition matches 10% of rows, with HNSW and the default <code>hnsw.ef_search</code> of 40, only 4 rows will match on average."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/pgvector/pgvector#filtering">pgvector README, "Filtering"</a>. Since version 0.8.0, "iterative index scans" scan more of the index until enough rows pass the filter. The same README says: "For tenant isolation, use list partitioning or separate tables."</span> A user who may read 10% of the documents gets 4 results instead of 40. A user who may read 1% often gets none.</p>
+
+<table>
+  <thead><tr><th></th><th>Post-filtering (rank, then filter in app code)</th><th>Pre-filtering (filter in the query that ranks)</th></tr></thead>
+  <tbody>
+    <tr><td>Forbidden rows leave the database?</td><td>Yes, every one that ranked in the top-k</td><td>Never</td></tr>
+    <tr><td>Results for a user with narrow access</td><td>Few or none, even when good matches exist</td><td>The best k among the rows they may see</td></tr>
+    <tr><td>Where the rule lives</td><td>In every caller that remembers to apply it</td><td>In the database, next to the data</td></tr>
+  </tbody>
+</table>
+
+<p>The fix is to put the permission check <em>inside the same query that ranks</em>. SQL reads <code>WHERE</code> (and row-level security, below) before <code>ORDER BY</code> and <code>LIMIT</code>, so forbidden rows never compete for a top slot and never come back.</p>
+
+<h2>3 · Put the rule in the database with row-level security</h2>
+
+<p><a href="0003-enterprise-identity-for-agents.html">Lesson 3</a> taught row-level security: default deny, table owners and superusers skipping it, and a transaction-local setting that tells the policy who is asking. Retrieval adds nothing new to that machinery. It just raises the stakes, because whatever the search returns goes straight into a prompt. Two reminders matter most here:<span class="sn-ref"></span><span class="sidenote numbered">Both from <a href="https://www.postgresql.org/docs/current/ddl-rowsecurity.html">PostgreSQL docs, "Row Security Policies"</a>.</span></p>
+<ul>
+  <li><strong>The filter is silent.</strong> "Rows for which the expression does not return <code>true</code> will not be processed." There is no error. The search just sees fewer rows, which is exactly what you want for ranking.</li>
+  <li><strong>Owners skip it.</strong> "Table owners normally bypass row security as well." If your search runs as the role that created the table, your policy does nothing, and every check still looks fine in a demo where you are an admin.</li>
+</ul>
+
+<p>Supabase's guide to RAG with permissions uses the same pattern as Lesson 3: "a custom session variable that contains the current user's ID", read in the policy with <code>current_setting()</code>.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://supabase.com/docs/guides/ai/rag-with-permissions">Supabase, "RAG with Permissions"</a>, section on connecting to Postgres directly.</span> Here the policy needs two facts, the tenant and the user's groups, so the exercise sets two settings. Both are set with <code>set_config(name, value, true)</code>, which applies "only during the current transaction", so a pooled connection can't carry one user's groups into the next request.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/functions-admin.html">PostgreSQL docs, "System Administration Functions"</a>. <code>SET LOCAL ROLE</code> works the same way: <code>LOCAL</code> lasts "only till the end of the current transaction, whether committed or not" (<a href="https://www.postgresql.org/docs/current/sql-set.html">"SET"</a>).</span> As in Lesson 3, the values come from the token your server verified, never from anything the model wrote.</p>
+
+<figure class="code"><figcaption>exercises/0004-retrieval/solution.ts · the policy</figcaption><pre><code>alter table docs enable row level security;
+create policy tenant_and_groups on docs for select to app_user
+  using (
+    tenant = current_setting('app.tenant', true)
+    and acl &amp;&amp; string_to_array(current_setting('app.groups', true), ',')
+  );</code></pre></figure>
+
+<p><code>acl &amp;&amp; groups</code> means "the two arrays share at least one item". The <code>true</code> in <code>current_setting(name, true)</code> returns NULL instead of an error when the setting is missing.<span class="sn-ref"></span><span class="sidenote numbered"><code>current_setting</code> "throws an error unless <em>missing_ok</em> is supplied and is <code>true</code> (in which case NULL is returned)". <a href="https://www.postgresql.org/docs/current/functions-admin.html">PostgreSQL docs</a>.</span> NULL is never <code>true</code>, so a request that forgets to say who is asking gets zero rows. The policy fails closed.</p>
+
+<div class="callout">
+  <p><strong>RLS or an explicit <code>WHERE</code>?</strong> Both filter before ranking, so both pass this lesson's checks. An explicit <code>WHERE tenant = $1 AND acl &amp;&amp; $2</code> is simpler and easy to read in a code review, but every query, including the one a teammate writes next year, must remember it. RLS can't be forgotten: Supabase recommends it because it "is always applied even as new queries and application logic is introduced in the future". The costs: every request needs a role and settings inside a transaction, a mistake shows up as silently empty results rather than an error, and Supabase warns that RLS is sensitive to latency when permissions come from another system. On a customer deployment with several engineers touching the code, RLS is usually the safer default.</p>
+</div>
+
+<h2>4 · Ranking: keywords now, vectors later</h2>
+
+<p>The exercise ranks with Postgres full-text search, because PGlite runs real Postgres in-process with no setup but doesn't bundle pgvector, and real embeddings would need an API key. Three pieces do the work:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/textsearch-controls.html">PostgreSQL docs, "Controlling Text Search"</a>. <code>plainto_tsquery</code> puts an AND between the words; the exercise swaps it for OR so partial matches get a low score instead of no score.</span></p>
+<ul>
+  <li>a <code>tsvector</code> column, generated from each document's title and body, holding its words in normalised form ("refunds" becomes <code>refund</code>);</li>
+  <li><code>plainto_tsquery('english', 'refund policy')</code>, which turns the user's text into a query;</li>
+  <li><code>ts_rank(tsv, q)</code>, which "ranks vectors based on the frequency of their matching lexemes" (lexemes are those normalised words).</li>
+</ul>
+
+<p>A <code>ts_rank</code> score has no fixed scale. The docs say the ranking functions "do not use any global information, so it is impossible to produce a fair normalization to 1% or 100%". So the abstention threshold in the exercise (0.05) is tuned on this corpus. On a customer's data you tune it again, ideally with an eval.</p>
+
+<p><strong>Swapping in vectors changes the ranking line, not the permission.</strong> With pgvector you would store an embedding per chunk and order by distance to the query's embedding instead of by <code>ts_rank</code>. The policy is identical, because RLS works on rows and doesn't care how they are scored. Supabase's guide does exactly this: the same kind of policy, on a table of document chunks with a pgvector column.</p>
+
+<p><strong>Hybrid search</strong> runs both and merges them. Anthropic's Contextual Retrieval post explains why: "embedding models excel at capturing semantic relationships, they can miss crucial exact matches", such as an error code like <code>TS-999</code>. Keyword ranking (BM25) finds the exact string. Combining contextual embeddings with contextual BM25 cut their top-20 retrieval failure rate by 49%, and adding a reranker took it to 67%.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/news/contextual-retrieval">Anthropic, "Introducing Contextual Retrieval"</a>, September 2024. The results are merged "using rank fusion techniques". Postgres's built-in <code>ts_rank</code> is a simpler frequency score, not BM25.</span> For permissions, the rule is simple: <em>both</em> halves must be filtered. With RLS on the table, both queries are filtered without anyone remembering to.</p>
+
+<h2>5 · Citations and abstention</h2>
+
+<p><strong>Citations.</strong> Return each hit's id and title with its score, and show them with the answer. A person can check the answer against the source, and your logs record exactly which rows the model saw. A passage with no source can't be checked, and can't be traced back if it turns out to be one the user shouldn't have seen.</p>
+
+<p><strong>Abstention.</strong> If no permitted document clears the threshold, say so: "I couldn't find a document you have access to that answers this." Don't hand the model a weak match and hope. And don't say "there's an HR document about this, but you can't open it": that tells the user the document exists, which is itself a leak. With RLS you couldn't say it anyway, because the app never learns the forbidden rows were there.</p>
+
+<h2>6 · GraphRAG, in one paragraph</h2>
+
+<p>The roadmap names this stage "Permission-filtered RAG &amp; GraphRAG". Microsoft's GraphRAG builds an index by "extracting a knowledge graph out of raw text", then groups related entities into a "community hierarchy" and writes summaries for each community. It targets questions where "baseline RAG struggles to connect the dots" across many documents.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://microsoft.github.io/graphrag/">Microsoft, GraphRAG project page</a>.</span> You won't build one here. But carry one question into any GraphRAG project: a community summary is written from many documents, so who may read it? If even one of its sources is restricted, the summary needs that restriction too.</p>
+
+<h2>7 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0004-retrieval/</code>. <code>harness.ts</code> seeds two tenants (Acme and Globex), seven documents with ACLs and three users, and runs five checks. Its <code>sql()</code> helper records every document id that leaves the database, the way a log line or a prompt would see it. <code>start.ts</code> holds the bad version and your TODO.</p>
+
+<figure class="code"><figcaption>exercises/0004-retrieval/start.ts · the deliberately bad version</figcaption><pre><code>const rows = await sql(
+  `select id, tenant, acl, body, ts_rank(tsv, q) as score
+     from docs, ${OR_QUERY} as q
+    where tsv @@ q
+    order by score desc
+    limit 3`,
+  [query],
+);
+<span class="c">// By now every row above has already left the database.</span>
+const allowed = rows.filter((r) =&gt; r.tenant === user.tenant &amp;&amp; r.acl.some((g) =&gt; user.groups.includes(g)));
+<span class="c">// Returns passages with no source, so nothing can be cited. No threshold either.</span>
+return { abstained: allowed.length === 0, hits: allowed.map((r) =&gt; ({ text: r.body, score: r.score })) };</code></pre></figure>
+
+<p>Run it first, so you see every failure before you fix anything:</p>
+
+<figure class="code"><figcaption>bun exercises/0004-retrieval/start.ts</figcaption><pre><code>FAIL  No cross-tenant leak
+      rows from the other tenant left the database: globex-2, globex-1, acme-2
+FAIL  No restricted document
+      alice's searches pulled rows she may not read: globex-2, globex-1, acme-2, acme-3
+FAIL  Right document first
+      alice "refund policy" -&gt; abstained (want acme-1); hank "salary bands" -&gt; (passage with no id), (passage with no id) (want acme-3)
+FAIL  Abstains when nothing permitted matches
+      alice "salary bands" -&gt; (passage with no id) (want abstained)
+FAIL  Every hit carries a citation
+      3 of 3 hits have no id or title to cite
+
+0/5 checks pass.</code></pre></figure>
+
+<p>Read the third line closely. Alice may read Acme's refund policy, yet the naive search <em>abstained</em>: Globex's two refund documents and Acme's finance review took all three top slots, then the filter threw them away. That's starvation. And the fourth line is the opposite mistake: with no threshold, a weak match on the word "salary" (the payroll FAQ) comes back as if it answered "salary bands".</p>
+
+<p>Now write <code>search(user, query)</code> in <code>start.ts</code>. Give yourself 30 minutes before you open the solution.</p>
+<ol>
+  <li>Filter by tenant and groups inside the database. Either enable RLS and write a policy, then run each search in a transaction as <code>app_user</code> with the settings made local. Or add an explicit <code>WHERE</code> to the ranking query. Try RLS first.</li>
+  <li>Select <code>id</code> and <code>title</code> with the score, so every hit is citable.</li>
+  <li>Drop hits below <code>MIN_SCORE</code>. If nothing is left, abstain.</li>
+</ol>
+
+<p>Stuck on RLS returning every row? You're probably still the superuser that owns the table. Check that <code>set local role app_user</code> ran inside the same transaction as the query.</p>
+
+<p>The worked solution keeps the ranking query exactly as it was and puts all of the permission logic in the policy and two setup lines:</p>
+
+<figure class="code"><figcaption>exercises/0004-retrieval/solution.ts · search()</figcaption><pre><code>await sql("begin");
+try {
+  await sql("set local role app_user");
+  await sql("select set_config('app.tenant', $1, true), set_config('app.groups', $2, true)",
+    [user.tenant, user.groups.join(",")]);
+
+  <span class="c">// Same ranking query as searchNaive. RLS filters rows as they are read,</span>
+  <span class="c">// before ORDER BY and LIMIT, so forbidden rows can't take a top slot.</span>
+  const hits = await sql&lt;Hit&gt;(
+    `select id, title, ts_rank(tsv, q) as score
+       from docs, ${OR_QUERY} as q
+      where tsv @@ q
+      order by score desc
+      limit 3`,
+    [query],
+  );
+  await sql("commit");
+
+  const good = hits.filter((h) =&gt; h.score &gt;= MIN_SCORE);
+  return { abstained: good.length === 0, hits: good };
+} catch (e) {
+  await sql("rollback");
+  throw e;
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0004-retrieval/solution.ts</figcaption><pre><code>PASS  No cross-tenant leak
+      each user only ever touched their own tenant
+PASS  No restricted document
+      alice never touched an HR or finance row
+PASS  Right document first
+      alice "refund policy" -&gt; acme-1 (want acme-1); hank "salary bands" -&gt; acme-3 (want acme-3)
+PASS  Abstains when nothing permitted matches
+      alice "salary bands" -&gt; abstained (want abstained)
+PASS  Every hit carries a citation
+      3 hits, all with id and title
+
+5/5 checks pass.</code></pre></figure>
+
+<p>Notice checks 3 and 4 together: the same question, "salary bands", gives Hank (HR) the salary document and gives Alice an honest "nothing I can show you". The checks test both, so a search that blocks everything can't pass.</p>
+
+<h2>8 · Safe, or leaks data?</h2>
+
+<p>Each card is a retrieval design you might meet in a customer's codebase, or write yourself on a tired Friday. Decide whether it keeps forbidden data inside the database, then read why.</p>
+
+<script type="application/json" data-sort="l4-designs">
+{
+  "buckets": ["Safe", "Leaks data"],
+  "items": [
+    { "label": "RLS policy on the chunks table, app runs searches as a non-owner role", "detail": "The ranking query has no permission logic of its own.", "bucket": 0,
+      "why": "This is the exercise's design. The policy filters rows as they are read, so the ranking query can't return a forbidden row even if it forgets about permissions (<a href=\"https://www.postgresql.org/docs/current/ddl-rowsecurity.html\">Postgres docs</a>)." },
+    { "label": "Take the top 10 matches, then drop forbidden ones in app code", "detail": "Post-filtering.", "bucket": 1,
+      "why": "Forbidden rows leave the database before the filter runs, and the top 10 can be all forbidden, which starves the results. pgvector's docs show a 10% filter leaving 4 of 40 candidates (<a href=\"https://github.com/pgvector/pgvector#filtering\">pgvector</a>)." },
+    { "label": "RLS is enabled, but the app connects as the role that created the table", "detail": "The policy is correct.", "bucket": 1,
+      "why": "\"Table owners normally bypass row security as well\" (<a href=\"https://www.postgresql.org/docs/current/ddl-rowsecurity.html\">Postgres docs</a>). The policy never runs. Use a separate role, or <code>FORCE ROW LEVEL SECURITY</code>." },
+    { "label": "Explicit WHERE tenant = $1 AND acl && $2 in the ranking query", "detail": "No RLS. Every search goes through this one function.", "bucket": 0,
+      "why": "The filter runs before ORDER BY and LIMIT, so nothing forbidden leaves the database. The risk is the next query someone writes without it, which is why Supabase prefers RLS (<a href=\"https://supabase.com/docs/guides/ai/rag-with-permissions\">Supabase</a>)." },
+    { "label": "Log the raw candidates for debugging, then apply the permission check", "detail": "The answer itself is filtered correctly.", "bucket": 1,
+      "why": "The log now holds titles and text the user may not read, and logs are read by more people and kept longer than the database. Post-filtering is what made this mistake possible." },
+    { "label": "Plain SET app.tenant on a pooled connection, never reset", "detail": "Set once per request, outside a transaction.", "bucket": 1,
+      "why": "A session-level setting outlives the request. The next user who borrows that connection runs with the previous user's tenant. Use <code>set_config(..., true)</code> inside a transaction: it applies \"only during the current transaction\" (<a href=\"https://www.postgresql.org/docs/current/functions-admin.html\">Postgres docs</a>)." },
+    { "label": "Each tenant gets its own partition or table, plus a group filter in the query", "detail": "Separate storage per customer.", "bucket": 0,
+      "why": "pgvector's own advice: \"For tenant isolation, use list partitioning or separate tables.\" OWASP also recommends \"strict logical and access partitioning\" (<a href=\"https://genai.owasp.org/llmrisk/llm082025-vector-and-embedding-weaknesses/\">OWASP LLM08</a>). The group filter still handles access inside the tenant." },
+    { "label": "When it abstains, the agent says a restricted HR document matched", "detail": "Trying to be helpful.", "bucket": 1,
+      "why": "The user now knows the document exists and what it is about. Abstain without hinting at what you couldn't show." },
+    { "label": "Keyword half of hybrid search calls an external index with no ACL filter", "detail": "The vector half runs on the RLS-protected table.", "bucket": 1,
+      "why": "Both halves of hybrid search feed the merged results, so both must be filtered. One unfiltered half is a post-filter problem again." },
+    { "label": "GraphRAG community summaries built over every document, shown to all staff", "detail": "Built once, at indexing time.", "bucket": 1,
+      "why": "A summary written from many documents can repeat facts from restricted ones. Derived data needs the restrictions of its sources (<a href=\"https://microsoft.github.io/graphrag/\">GraphRAG</a> builds these summaries per community)." }
+  ]
+}
+</script>
+
+<h2>9 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l4-recall">
+{
+  "questions": [
+    { "q": "In the exercise, the naive search abstained for Alice on \"refund policy\", although Acme's refund policy exists. Why?",
+      "options": ["Forbidden documents filled the top slots", "The full-text index was never built", "Her groups did not include everyone", "The query words were not stemmed"],
+      "answer": 0,
+      "why": "Globex's two refund documents and Acme's finance review took all three top-k slots; the filter then removed them all. That's starvation, the second failure of post-filtering (<a href=\"https://github.com/pgvector/pgvector#filtering\">pgvector</a> shows the same effect with vector indexes)." },
+    { "q": "From Lesson 3: you enable row-level security on a table but write no policy yet. What does a normal role see?",
+      "options": ["Every row, until a policy exists", "Only rows that the role inserted", "No rows at all, by default", "An error on every select query"],
+      "answer": 2,
+      "why": "\"If no policy exists for the table, a default-deny policy is used, meaning that no rows are visible or can be modified\" (<a href=\"https://www.postgresql.org/docs/current/ddl-rowsecurity.html\">Postgres docs</a>)." },
+    { "q": "The RLS solution keeps the same LIMIT 3 as the naive search. Why can't forbidden rows starve it?",
+      "options": ["The threshold removes the forbidden rows", "The policy filters rows before ranking", "Postgres raises an error on them", "The app retries with larger limits"],
+      "answer": 1,
+      "why": "The policy is applied as rows are read, before ORDER BY and LIMIT, so only permitted rows compete for the three slots. Postgres doesn't raise an error: \"Rows for which the expression does not return true will not be processed\" (<a href=\"https://www.postgresql.org/docs/current/ddl-rowsecurity.html\">Postgres docs</a>)." },
+    { "q": "Why set the user's tenant with set_config(name, value, true) inside a transaction?",
+      "options": ["It makes the ranking query faster", "It hides the value from logs", "The text index requires it local", "It ends when the transaction ends"],
+      "answer": 3,
+      "why": "With is_local true, \"the new value will only apply during the current transaction\" (<a href=\"https://www.postgresql.org/docs/current/functions-admin.html\">Postgres docs</a>). On a pooled connection, a session setting would leak into the next user's request." },
+    { "q": "You swap full-text ranking for pgvector embeddings. What has to change in the permission policy?",
+      "options": ["Nothing, it filters rows", "Add the embedding column", "Lower the score threshold", "Add a distance check"],
+      "answer": 0,
+      "why": "RLS decides which rows exist for this user; how they are scored doesn't matter. Supabase's guide applies the same kind of policy to a table of chunks with a pgvector column (<a href=\"https://supabase.com/docs/guides/ai/rag-with-permissions\">Supabase</a>)." },
+    { "q": "No permitted document clears the threshold. What should the agent tell the user?",
+      "options": ["That a restricted document matched instead", "Its best guess from weak matches", "That nothing they can access matched", "The closest document from another tenant"],
+      "answer": 2,
+      "why": "Abstain, and don't hint at what exists behind the wall: naming a restricted match is itself a leak. With RLS the app can't even tell, because forbidden rows never come back." },
+    { "q": "Anthropic's Contextual Retrieval post combines embeddings with BM25. What does the keyword half catch?",
+      "options": ["Synonyms that the embeddings missed", "Documents the user cannot read", "Answers that need multiple hops", "Exact strings like error codes"],
+      "answer": 3,
+      "why": "Embeddings \"can miss crucial exact matches\", such as an error code like TS-999; BM25 finds the exact string (<a href=\"https://www.anthropic.com/news/contextual-retrieval\">Anthropic</a>). Multi-hop questions are GraphRAG's territory." },
+    { "q": "From Lesson 1: Palantir splits engineers into Devs and Deltas. What does a Delta focus on?",
+      "options": ["One capability, many customers", "One customer, many capabilities", "One demo, many prospects", "One platform, many teams"],
+      "answer": 1,
+      "why": "A Dev builds one capability for many customers; a Delta (an FDE) enables many capabilities for one customer (<a href=\"https://blog.palantir.com/a-day-in-the-life-of-a-palantir-forward-deployed-software-engineer-45ef2de257b1\">Palantir</a>). This lesson is a Delta job: one customer's documents, one customer's rules." }
+  ]
+}
+</script>
+
+<h2>10 · Explain it to the security lead</h2>
+
+<p>On a real deployment you'll be asked this out loud, often by someone who doesn't write code. Write the answer you'd give Acme's security lead, who has just asked: "How do I know your agent won't show my support staff HR documents?" It saves as you type.</p>
+
+<script type="application/json" data-practice="l4-explain">
+{
+  "title": "Why we filter before we rank",
+  "maxWords": 150,
+  "fields": [
+    { "key": "risk", "label": "What could go wrong", "hint": "Name both failures of filtering after the search, in plain words." },
+    { "key": "design", "label": "What we do instead", "hint": "Where the rule lives and who sets the user's identity on each request." },
+    { "key": "nothing", "label": "When nothing matches", "hint": "What the agent says, and what it never says." },
+    { "key": "proof", "label": "How you can check it", "hint": "A test they could watch run, or a log they could read." }
+  ],
+  "checks": [
+    "Says forbidden rows never leave the database, not just that they are hidden from the answer",
+    "Names starvation (good documents pushed out by forbidden ones) as a second reason",
+    "Says where the rule lives (an RLS policy or one query) and that the app runs as a role that can't bypass it",
+    "Mentions both tenant isolation and access inside the tenant",
+    "Says the abstention message doesn't reveal that a restricted document exists",
+    "Offers a proof: a test with a user who must see nothing, run on every change",
+    "Uses no unexplained jargon: no tsvector, no top-k, no HNSW",
+    "150 words or fewer"
+  ]
+}
+</script>
+
+<p>When you're done, press <strong>Copy as Markdown</strong>. Keep it in your interview notes: "how do you stop an agent leaking documents?" is a fair FDE interview question.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 10 minutes</p>
+  <p><a href="https://supabase.com/docs/guides/ai/rag-with-permissions">"RAG with Permissions"</a> from the Supabase docs. It is this lesson's design with pgvector instead of full-text search: documents, chunks with embeddings, and an RLS policy that filters the similarity search. Read the sections on shared ownership and on users who live in another system (a session variable, or your own JWT). Those are the two shapes you'll meet at real customers. Then, if you have 5 more minutes, read the <a href="https://github.com/pgvector/pgvector#filtering">"Filtering" and "Iterative Index Scans"</a> sections of the pgvector README.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next (planned): <strong>Lesson 5, MCP and legacy integration</strong> (Stage 5). Your search function becomes a tool the agent can call, carrying the user's identity with it. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

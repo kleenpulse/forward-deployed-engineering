@@ -1,0 +1,418 @@
+/* Shared stylesheet for every lesson and reference sheet in this workspace.
+   Tufte-style: one reading column, notes in the right margin, quiet colour. */
+
+/* Mozilla Text (SIL OFL, from Google Fonts), self-hosted so lessons work offline and from disk.
+   Variable weight 200-700; it has no italic, so emphasis uses a synthesized slant. */
+@font-face {
+  font-family: "Mozilla Text"; font-style: normal; font-weight: 200 700; font-display: swap;
+  src: url("fonts/mozilla-text-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Mozilla Text"; font-style: normal; font-weight: 200 700; font-display: swap;
+  src: url("fonts/mozilla-text-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* Cascadia Code (SIL OFL, Microsoft, via Fontsource) for labels and code. Variable weight 200-700. */
+@font-face {
+  font-family: "Cascadia Code"; font-style: normal; font-weight: 200 700; font-display: swap;
+  src: url("fonts/cascadia-code-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Cascadia Code"; font-style: normal; font-weight: 200 700; font-display: swap;
+  src: url("fonts/cascadia-code-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+:root {
+  --paper: #fffff8;
+  --ink: #1b1b1b;
+  --muted: #5f5f58;
+  --rule: #d9d6c8;
+  --tint: #f4f1e4;
+  --accent: #8a1c1c;
+  --good: #2e6b3a;
+  --good-tint: #e6f0e4;
+  --bad: #9b2f2f;
+  --bad-tint: #f6e3e0;
+  /* Text hierarchy: titles strongest, body text next, labels quietest. */
+  --title: #111;
+  --text: #1b1b1b;
+  --field: #fff;
+  color-scheme: light;
+  --font-text: "Mozilla Text", "Segoe UI", system-ui, sans-serif;
+  --font-label: "Cascadia Code", "Cascadia Mono", ui-monospace, Consolas, monospace;
+  --font-code: "Cascadia Code", "Cascadia Mono", ui-monospace, Consolas, monospace;
+}
+
+/* Dark theme (default; theme.js sets data-theme). Screen only, so printing stays on paper.
+   Titles near-white, body text light grey, labels mid grey. --ink stays the "strong mark"
+   colour (rules, bar fills, the tooltip pill), so the pill turns light on black. */
+@media screen {
+  :root[data-theme="dark"] {
+    --paper: #000;
+    --ink: #e8e8e8;
+    --title: #f4f4f4;
+    --text: #c6c6c6;
+    --muted: #8a8a8a;
+    --rule: #262626;
+    --tint: #121212;
+    --accent: #e8907f;
+    --good: #82c991;
+    --good-tint: #0e2214;
+    --bad: #ee8f84;
+    --bad-tint: #2a1311;
+    --field: #0b0b0b;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+
+html { font-size: 17px; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--text);
+  font-family: var(--font-text);
+  line-height: 1.55;
+  counter-reset: sidenote;
+}
+
+/* One centred reading column. Side notes hang in the right margin when the window is
+   wide enough (see .sidenote), and drop inline below it otherwise. */
+main {
+  width: min(92%, 40rem);
+  margin: 0 auto;
+  padding: 3rem 0 5rem;
+}
+
+/* ---------- Type ---------- */
+
+h1 { font-weight: 400; color: var(--title); font-size: 2.4rem; line-height: 1.15; margin: .4rem 0 .6rem; }
+h2 { font-weight: 400; color: var(--title); font-size: 1.55rem; margin: 2.8rem 0 .6rem; }
+h3 { font-weight: 400; color: var(--title); font-size: 1.2rem; margin: 1.8rem 0 .4rem; }
+strong, b { color: var(--title); }
+p, li { font-size: 1rem; }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+code, kbd, pre { font-variant-ligatures: none; }
+code, kbd { font-family: var(--font-code); font-size: .86em; background: var(--tint); padding: .05em .3em; border-radius: 3px; }
+blockquote { margin: 1.2rem 1.5rem; color: var(--muted); }
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2.5rem 0; }
+
+.kicker {
+  font-family: var(--font-label); font-size: .85rem; letter-spacing: .02em; color: var(--muted);
+}
+.subtitle { color: var(--muted); font-size: 1.15rem; margin: 0 0 1.5rem; }
+.small { font-size: .85rem; color: var(--muted); }
+
+/* ---------- Sidenotes (citations live here) ---------- */
+
+.sn-ref { counter-increment: sidenote; }
+.sn-ref::after {
+  content: counter(sidenote);
+  font-family: var(--font-label); font-size: .65rem; vertical-align: super;
+  color: var(--accent); margin-left: 1px;
+}
+.sidenote {
+  float: right; clear: right;
+  width: 14rem; margin-right: -16rem; margin-top: .2rem; margin-bottom: 1rem;
+  font-size: .8rem; line-height: 1.4; color: var(--muted);
+}
+/* Inside a padded box the note must also clear the box padding to line up with the others. */
+.callout .sidenote { margin-right: calc(-16rem - 1.1rem); }
+.sidenote.numbered::before {
+  content: counter(sidenote) ". ";
+  font-family: var(--font-label); color: var(--accent);
+}
+@media (max-width: 1260px) {
+  .sidenote {
+    float: none; display: block; width: auto; margin: .5rem 0 1rem;
+    padding: .5rem .75rem; background: var(--tint); border-radius: 4px;
+  }
+  .callout .sidenote { margin-right: 0; background: var(--paper); }
+}
+
+/* ---------- Boxes ---------- */
+
+.win {
+  border-top: 2px solid var(--ink); border-bottom: 1px solid var(--rule);
+  padding: .9rem 0; margin: 1.5rem 0 2rem;
+}
+.win strong { font-family: var(--font-label); font-size: .74rem; letter-spacing: .14em; text-transform: uppercase; }
+.callout { background: var(--tint); padding: .9rem 1.1rem; border-radius: 4px; margin: 1.4rem 0; }
+.callout > :first-child { margin-top: 0; }
+.callout > :last-child { margin-bottom: 0; }
+.ask {
+  border: 1px dashed var(--accent); border-radius: 4px; padding: .8rem 1rem; margin: 2rem 0;
+}
+
+/* ---------- Tables ---------- */
+
+table { border-collapse: collapse; width: 100%; margin: 1.2rem 0; font-size: .92rem; }
+th, td { text-align: left; vertical-align: top; padding: .45rem .6rem .45rem 0; border-bottom: 1px solid var(--rule); }
+th { font-family: var(--font-label); font-weight: 500; font-size: .72rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--ink); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------- Table search (filter rows as you type) ---------- */
+
+.search { margin: 1.5rem 0 0; }
+.search label { display: block; font-family: var(--font-label); font-size: .8rem; color: var(--muted); margin-bottom: .4rem; }
+.search .row { display: flex; align-items: center; gap: .8rem; }
+.search input {
+  flex: 1; min-width: 0; font: inherit; font-size: 1rem; padding: .55rem .75rem;
+  border: 1px solid var(--rule); border-radius: 4px; background: var(--field); color: var(--title);
+}
+.search input::placeholder { color: var(--muted); opacity: 1; }
+.search input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
+.search input::-webkit-search-cancel-button { cursor: pointer; }
+.search .count { font-family: var(--font-label); font-size: .8rem; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.search kbd { font-family: var(--font-label); font-size: .75rem; padding: 0 .3rem; border: 1px solid var(--rule); border-radius: 3px; }
+td mark { background: var(--tint); color: var(--title); box-shadow: inset 0 -2px 0 var(--accent); padding: 0 .05em; }
+table.fixed { table-layout: fixed; }
+table.fixed td { overflow-wrap: anywhere; }
+tr.empty td { color: var(--muted); padding: 1.2rem 0; border-bottom: 0; }
+@media print { .search { display: none; } }
+
+/* ---------- Bar rows (simple, label-first) ---------- */
+
+.bars { margin: 1rem 0 1.4rem; }
+.bar { display: grid; grid-template-columns: 15rem 1fr 3rem; align-items: center; gap: .6rem; margin: .3rem 0; font-size: .9rem; }
+.bar .track { height: .6rem; background: var(--tint); border-radius: 2px; overflow: hidden; }
+.bar .fill { height: 100%; background: var(--ink); }
+.bar .val { font-variant-numeric: tabular-nums; text-align: right; color: var(--muted); }
+@media (max-width: 600px) { .bar { grid-template-columns: 9rem 1fr 2.6rem; } }
+
+/* ---------- Status tags ---------- */
+
+.tag {
+  display: inline-block; font-family: var(--font-label); font-size: .75rem; letter-spacing: .08em;
+  text-transform: uppercase; padding: .1rem .4rem; border-radius: 3px; white-space: nowrap;
+}
+.tag.strong { background: var(--good-tint); color: var(--good); }
+.tag.partial { background: var(--tint); color: var(--text); }
+.tag.thin { background: var(--bad-tint); color: var(--bad); }
+.tag.core { border: 1px solid var(--ink); }
+.tag.spec { border: 1px dashed var(--muted); color: var(--muted); }
+
+/* ---------- Shared widget chrome (quiz.js, sort.js, practice.js) ---------- */
+
+.widget { margin: 1.4rem 0 2rem; }
+.widget .item { padding: 1rem 0; border-bottom: 1px solid var(--rule); }
+.widget .prompt { margin: 0 0 .6rem; }
+.widget .prompt .n { font-family: var(--font-label); font-size: .72rem; color: var(--muted); margin-right: .4rem; }
+.widget .choices { display: grid; gap: .4rem; }
+.widget .choices.row { grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); }
+.widget button.choice {
+  font: inherit; font-size: .95rem; text-align: left; cursor: pointer;
+  background: transparent; color: var(--text);
+  border: 1px solid var(--rule); border-radius: 4px; padding: .5rem .75rem;
+}
+.widget button.choice:hover:not(:disabled) { border-color: var(--ink); }
+.widget button.choice:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.widget button.choice:disabled { cursor: default; }
+.widget button.choice.right { border-color: var(--good); background: var(--good-tint); }
+.widget button.choice.wrong { border-color: var(--bad); background: var(--bad-tint); }
+.widget .feedback { margin: .6rem 0 0; font-size: .9rem; display: none; }
+.widget .feedback.show { display: block; }
+.widget .feedback .verdict { font-family: var(--font-label); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; margin-right: .4rem; }
+.widget .feedback .verdict.right { color: var(--good); }
+.widget .feedback .verdict.wrong { color: var(--bad); }
+.widget .score { font-family: var(--font-label); font-size: .85rem; margin-top: 1rem; display: flex; gap: 1rem; align-items: center; }
+.widget .tool {
+  font-family: var(--font-label); font-size: .78rem; cursor: pointer; background: transparent;
+  border: 1px solid var(--rule); border-radius: 4px; padding: .3rem .7rem; color: var(--muted);
+}
+.widget .tool:hover { border-color: var(--title); color: var(--ink); }
+
+.widget label.field { display: block; margin: 1rem 0 .3rem; font-family: var(--font-label); font-size: .8rem; letter-spacing: .04em; }
+.widget .hint { display: block; font-family: var(--font-text); color: var(--muted); font-size: .85rem; letter-spacing: 0; }
+.widget textarea {
+  width: 100%; min-height: 4.5rem; font: inherit; font-size: .95rem; padding: .6rem .7rem;
+  border: 1px solid var(--rule); border-radius: 4px; background: var(--field); color: var(--text); resize: vertical;
+}
+.widget textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.widget .checks { margin: 1.2rem 0 0; padding: 0; list-style: none; }
+.widget .checks li { margin: .35rem 0; }
+.widget .checks input { margin-right: .5rem; accent-color: var(--good); }
+.widget .meter { font-family: var(--font-label); font-size: .8rem; color: var(--muted); }
+
+/* ---------- Footer nav ---------- */
+
+nav.course { font-family: var(--font-label); font-size: .8rem; display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: center; margin-bottom: 2rem; color: var(--muted); }
+nav.course a { color: var(--muted); }
+
+/* ---------- Print ---------- */
+
+@media print {
+  html { font-size: 11pt; }
+  body { background: #fff; }
+  main { width: 100%; padding: 0 30% 0 0; }
+  .sidenote { float: right; clear: right; width: 26%; margin: .2rem -30% 1rem 0; padding: 0; background: none; }
+  .callout .sidenote { margin-right: calc(-30% - 1.1rem); }
+  nav.course, .widget .tool, .widget .score, .no-print { display: none !important; }
+  .widget .feedback { display: block !important; }
+  .widget button.choice { border-color: #ccc; }
+  a { color: inherit; }
+  h2 { break-after: avoid; }
+  .item, tr, .callout { break-inside: avoid; }
+}
+
+/* ---------- Jargon terms + morph tooltip (tooltip.js) ---------- */
+
+.term {
+  text-decoration: underline dotted var(--muted);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: help;
+  border-radius: 2px;
+}
+.term:hover, .term:focus-visible { text-decoration-color: var(--accent); }
+.term:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.tip {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  position: fixed; z-index: 50; isolation: isolate; pointer-events: none;
+  visibility: hidden; opacity: 0;
+  transition: opacity 250ms var(--ease-out), scale 250ms var(--ease-out);
+}
+.tip[data-side="top"] { --tip-from: 0 calc(40% + var(--gap)); }
+.tip[data-side="bottom"] { --tip-from: 0 calc(-40% - var(--gap)); }
+.tip[data-open] { visibility: visible; opacity: 1; }
+/* Close: travel back and shrink into the term, fading only over the last stretch. */
+.tip[data-ending] {
+  scale: 0; opacity: 0;
+  transition: opacity 140ms cubic-bezier(0.4, 0, 0.2, 1) 80ms, scale 220ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+.tip[data-glide] {
+  transition: left 250ms var(--ease-out), top 250ms var(--ease-out),
+              width 250ms var(--ease-out), height 250ms var(--ease-out),
+              opacity 250ms var(--ease-out), scale 250ms var(--ease-out);
+}
+
+.tip-goo { position: absolute; inset: -24px; pointer-events: none; filter: url(#fde-tip-goo); }
+.tip-body {
+  position: absolute; inset: 24px; border-radius: 6px; background: var(--ink);
+  transition: translate 300ms var(--ease-out), scale 300ms var(--ease-out);
+}
+.tip[data-starting] .tip-body { scale: .5; translate: var(--tip-from); }
+.tip-frame { position: absolute; inset: 24px; }
+.tip-arrow { position: absolute; width: 12px; height: 12px; transition: left 250ms var(--ease-out); }
+.tip-arrow::before { content: ""; position: absolute; inset: 0; rotate: 45deg; border-radius: 2px; background: var(--ink); }
+.tip[data-side="top"] .tip-arrow { bottom: -6px; }
+.tip[data-side="bottom"] .tip-arrow { top: -6px; }
+/* The stem reaches across the gap on open, then shrinks away and the neck snaps. */
+.tip-stem {
+  position: absolute; top: 50%; left: 50%; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--ink); translate: -50% -50%; scale: 0;
+  transition: scale 160ms ease 110ms;
+}
+.tip[data-side="top"] .tip-stem { translate: -50% calc(-50% + var(--gap) - 3px); }
+.tip[data-side="bottom"] .tip-stem { translate: -50% calc(-50% - var(--gap) + 3px); }
+.tip[data-starting] .tip-stem { scale: 1; transition-delay: 0ms; }
+
+.tip-label {
+  position: relative; z-index: 1; display: block; max-width: 18rem;
+  padding: .5rem .8rem .55rem;
+  font-family: var(--font-text); font-size: .8rem; line-height: 1.4; color: var(--paper);
+  transition: opacity 160ms ease 60ms, filter 160ms ease 60ms;
+}
+.tip-term { font-family: var(--font-label); font-weight: 600; font-size: .95em; }
+.tip-full { opacity: .7; }
+.tip-def { display: block; margin-top: .15rem; }
+.tip[data-starting] .tip-label, .tip-label[data-entering] { opacity: 0; filter: blur(3px); transition-delay: 0ms; }
+.tip[data-ending] .tip-label { opacity: 0; filter: blur(3px); transition-duration: 80ms; transition-delay: 0ms; }
+.tip-label[data-entering] { transition: none; }
+.tip-prev { position: absolute; top: 0; left: 0; transition: opacity 150ms ease, filter 150ms ease; }
+.tip-prev[data-leaving] { opacity: 0; filter: blur(3px); }
+.tip-measure { position: fixed; left: -9999px; top: 0; display: inline-block; visibility: hidden; }
+
+.tip[data-instant], .tip[data-instant] * { transition: none !important; }
+.tip[data-instant] .tip-stem { display: none; }
+
+@media print { .term { text-decoration: none; } .tip, .tip-measure { display: none; } }
+
+/* ---------- Theme toggle (theme.js) ---------- */
+
+/* Pinned to the window's top-right corner, so it never wraps under long navs. */
+.theme-toggle {
+  position: fixed; top: 1rem; right: 1.25rem; z-index: 10;
+  font: inherit; cursor: pointer; background: var(--paper); color: var(--muted);
+  border: 1px solid var(--rule); border-radius: 999px; padding: .15rem .7rem;
+}
+.theme-toggle:hover { color: var(--title); border-color: var(--muted); }
+.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- Scroll ring (scroll-ring.js) ---------- */
+
+.scroll-ring-frame {
+  position: fixed; left: 0; bottom: 24px; z-index: 50; width: 72px;
+  display: none; justify-content: center; pointer-events: none;
+  color: #fff; mix-blend-mode: difference;
+  transition: opacity 300ms cubic-bezier(0, 0, .2, 1), visibility 0s;
+}
+/* Fades out on pages with nothing to scroll; visibility keeps it out of the tab order. */
+.scroll-ring-frame[data-still] {
+  opacity: 0; visibility: hidden; transition: opacity 300ms cubic-bezier(0, 0, .2, 1), visibility 0s 300ms;
+}
+@media (min-width: 1024px) { .scroll-ring-frame { display: flex; } }
+.scroll-ring {
+  position: relative; display: grid; place-items: center; width: 60px; height: 60px;
+  margin: 0; padding: 0; border: 0; border-radius: 999px; background: none; color: inherit; font: inherit;
+  cursor: default; pointer-events: auto;
+}
+.scroll-ring[data-away] { cursor: pointer; }
+.scroll-ring > svg { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
+.scroll-ring .track { opacity: .2; }
+.scroll-ring .fill { stroke-dasharray: 0 1; opacity: 0; }
+.scroll-ring .label {
+  grid-column-start: 1; grid-row-start: 1; display: flex; align-items: center; gap: 2px;
+  font-family: var(--font-text); font-size: 10px; letter-spacing: .1em; text-transform: uppercase;
+  transition-property: opacity, translate, filter; transition-duration: 300ms; transition-timing-function: cubic-bezier(0, 0, .2, 1);
+}
+.scroll-ring .label svg { width: 12px; height: 12px; }
+/* The left pad balances the tracking after the last letter. */
+.scroll-ring .label-scroll { padding-left: .1em; opacity: .6; }
+.scroll-ring .label-top { translate: 0 8px; opacity: 0; filter: blur(3px); }
+.scroll-ring[data-away]:hover .label-scroll,
+.scroll-ring[data-away]:focus-visible .label-scroll { translate: 0 -8px; opacity: 0; filter: blur(3px); }
+.scroll-ring[data-away]:hover .label-top,
+.scroll-ring[data-away]:focus-visible .label-top { translate: 0 0; opacity: 1; filter: none; }
+@media (prefers-reduced-motion: reduce) { .scroll-ring .label, .scroll-ring-frame { transition: none !important; } }
+@media print { .scroll-ring-frame { display: none !important; } }
+
+/* ---------- Code blocks ---------- */
+
+pre {
+  font-family: var(--font-code); font-size: .82rem; line-height: 1.55; color: var(--text);
+  background: var(--tint); border: 1px solid var(--rule); border-radius: 4px;
+  padding: .85rem 1rem; margin: 1.1rem 0 1.4rem; overflow-x: auto; tab-size: 2;
+}
+pre code { background: none; padding: 0; font-size: inherit; border-radius: 0; }
+pre .c { color: var(--muted); } /* comment */
+figure.code { margin: 1.1rem 0 1.4rem; }
+figure.code pre { margin: 0; }
+figure.code figcaption { font-family: var(--font-label); font-size: .75rem; color: var(--muted); margin-bottom: .35rem; }
+@media print { pre { white-space: pre-wrap; border-color: #ccc; } }
+
+/* ---------- Self-rating widget (rate.js) ---------- */
+
+.widget .choices.row3 { grid-template-columns: repeat(3, 1fr); }
+.widget button.choice.picked { border-color: var(--title); background: var(--tint); color: var(--title); }
+.widget.rate .summary { margin: 1.2rem 0 0; font-size: .95rem; }
+.widget.rate .summary .verdict { font-family: var(--font-label); font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-right: .5rem; }
+@media print { .widget.rate .summary { display: block; } }
+
+/* ---------- Reveal blocks (<details class="callout">) ---------- */
+
+details.callout > summary {
+  cursor: pointer; font-family: var(--font-label); font-size: .8rem; color: var(--muted);
+  list-style-position: outside; margin-left: 1rem;
+}
+details.callout > summary:hover { color: var(--title); }
+details.callout > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+details.callout[open] > summary { margin-bottom: .8rem; }
+@media print { details.callout > summary { display: none; } }

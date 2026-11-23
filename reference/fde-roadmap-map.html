@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · The FDE roadmap, checked</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="../lessons/0001-the-real-job-behind-the-roadmap.html">Lesson 1</a>
+  <a href="jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Reference</p>
+<h1>The FDE roadmap, checked</h1>
+<p class="subtitle">The 12 stages from the viral roadmap, sorted against 1,000 real job ads. Updated 2026-11-23.</p>
+
+<h2>The role in four lines</h2>
+<table>
+  <tbody>
+    <tr><td><strong>Dev</strong></td><td>One capability, many customers. Builds the product.</td></tr>
+    <tr><td><strong>Delta (FDE)</strong></td><td>One customer, many capabilities. Embeds with the customer and ships into their systems.<span class="sidenote"><a href="https://blog.palantir.com/a-day-in-the-life-of-a-palantir-forward-deployed-software-engineer-45ef2de257b1">Palantir Blog</a></span></td></tr>
+    <tr><td><strong>Echo</strong></td><td>Deployment strategist. Owns the relationship and adoption. At small companies the FDE does this too.</td></tr>
+    <tr><td><strong>Three jobs, one title</strong></td><td>Builder 60% (70–90% coding) · Sales Engineer+ 30% (quota, hands off) · Internal tools 10% (not really FDE). Aim for Builder.<span class="sidenote"><a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry, 1K FDE jobs</a></span></td></tr>
+  </tbody>
+</table>
+
+<h2>The numbers worth remembering</h2>
+<table>
+  <thead><tr><th>What</th><th class="num">Share of ads</th></tr></thead>
+  <tbody>
+    <tr><td>Working directly with customers (#1 duty)</td><td class="num">55%</td></tr>
+    <tr><td>Building and deploying AI/ML</td><td class="num">37%</td></tr>
+    <tr><td>Integrating systems and APIs</td><td class="num">32%</td></tr>
+    <tr><td>Python · TypeScript · AWS</td><td class="num">66 · 35 · 32%</td></tr>
+    <tr><td>AI agents · LLM experience · RAG</td><td class="num">35 · 31 · 12%</td></tr>
+    <tr><td>Asks for 3–5 years (of ads naming a level)</td><td class="num">60%</td></tr>
+    <tr><td>At companies of 11–200 people</td><td class="num">58%</td></tr>
+  </tbody>
+</table>
+<p class="small">Median advertised base $173,816. Gergely Orosz's plain-English read of a Google Cloud FDE ad: ~25% coding, ~50% integration and plumbing, ~25% meetings (<a href="https://blog.pragmaticengineer.com/the-pulse-forward-deployed-engineering-heats-up-again/">Pragmatic Engineer, May 2026</a>).</p>
+
+<h2>The 12 stages</h2>
+<table>
+  <thead><tr><th>Stage</th><th>Kind</th><th>Why (evidence)</th><th>Lesson</th></tr></thead>
+  <tbody>
+    <tr><td>1 · Identity & agent RBAC</td><td><span class="tag core">core</span></td><td>Every enterprise uses its own identity provider; agents must see only what the user can.</td><td class="num"><a href="../lessons/0003-enterprise-identity-for-agents.html">3</a></td></tr>
+    <tr><td>2 · Air-gapped & VPC</td><td><span class="tag spec">specialist</span></td><td>Government and defense (18% of industry-named ads).</td><td class="num">12</td></tr>
+    <tr><td>3 · Legacy data & ETL</td><td><span class="tag core">core</span></td><td>"Data readiness issues" block production (Google ad).</td><td class="num">6</td></tr>
+    <tr><td>4 · Permission-filtered RAG</td><td><span class="tag core">core</span></td><td>"RAG pipelines that don't hallucinate."</td><td class="num"><a href="../lessons/0004-permission-filtered-retrieval.html">4</a></td></tr>
+    <tr><td>5 · MCP & integration</td><td><span class="tag core">core</span></td><td>Integration in 32% of ads; about half the job.</td><td class="num">5</td></tr>
+    <tr><td>6 · PII guardrails</td><td><span class="tag spec">specialist</span></td><td>The heavy version (masking, FPE, audit) is for finance, health, insurance.</td><td class="num">11</td></tr>
+    <tr><td>7 · HITL & durable workflows</td><td><span class="tag core">core</span></td><td>"State-management challenges"; agents that fail gracefully.</td><td class="num">7</td></tr>
+    <tr><td>8 · Edge & on-prem inference</td><td><span class="tag spec">specialist</span></td><td>Only for customers who can't use hosted models.</td><td class="num">13</td></tr>
+    <tr><td>9 · Telemetry & ROI</td><td><span class="tag core">core</span></td><td>OpenAI measures "production adoption, measurable workflow impact".</td><td class="num">9</td></tr>
+    <tr><td>10 · Evals on customer data</td><td><span class="tag core">core</span></td><td>OpenAI: "eval-driven feedback".</td><td class="num">8</td></tr>
+    <tr><td>11 · Discovery & scoping</td><td><span class="tag core">core</span></td><td>The #1 duty (55%). The roadmap puts it eleventh; the job puts it first.</td><td class="num"><a href="../lessons/0002-discovery-and-scoping.html">2</a></td></tr>
+    <tr><td>12 · Handoff & self-serve</td><td><span class="tag core">core</span></td><td>Own delivery "from first prototype to stable production".</td><td class="num">10</td></tr>
+  </tbody>
+</table>
+<p class="small">The course teaches the nine core stages first, in the order the job runs them (discovery first), then the three specialist stages. See the <a href="../index.html">syllabus</a>.</p>
+
+<h2>Deployment story template</h2>
+<table>
+  <tbody>
+    <tr><td><strong>Customer & what hurt</strong></td><td>Who, and the problem in their words. No tech yet.</td></tr>
+    <tr><td><strong>Constraint</strong></td><td>Something you didn't choose: their stack, team, deadline, data, a provider's limit.</td></tr>
+    <tr><td><strong>Shipped</strong></td><td>Two sentences or fewer. No stack list.</td></tr>
+    <tr><td><strong>Measured</strong></td><td>A number, or the exact metric you'd track.</td></tr>
+  </tbody>
+</table>
+<p class="small">Add one thing you chose <em>not</em> to do, and why. Keep it to 120 words or fewer.</p>
+
+</main>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

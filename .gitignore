@@ -1,0 +1,11 @@
+node_modules/
+.firecrawl/
+
+# Personal study files: they stay on this machine and are never pushed.
+MISSION.md
+NOTES.md
+RESOURCES.md
+learning-records/
+NEXT-SESSION.md
+assets/terms-pending-*.js
+.impeccable/

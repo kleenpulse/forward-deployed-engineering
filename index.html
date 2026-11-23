@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forward Deployed Engineering · A free course</title>
+<meta name="description" content="A free, open course for software engineers who want a Forward Deployed Engineer job. Thirteen one-hour lessons, checked against 1,000 real job ads.">
+<link rel="stylesheet" href="assets/course.css">
+<script src="assets/theme.js"></script>
+<script src="assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+<nav class="course">
+  <a href="reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="reference/jargon.html">Jargon decoder</a>
+  <a href="https://github.com/kleenpulse/forward-deployed-engineering">Source on GitHub</a>
+</nav>
+
+<p class="kicker">A free, open course</p>
+<h1>Forward Deployed Engineering</h1>
+<p class="subtitle">For software engineers who want an FDE job: the kind where you embed with one customer and ship AI into their real systems. Thirteen lessons of about an hour each, checked against 1,000 real job ads.</p>
+
+<div class="win">
+  <strong>How it works</strong>
+  <p>Each lesson teaches one stage of the job, then makes you practise it: quizzes, sorting exercises, writing tasks and small code exercises with instant feedback. No account, no API keys. Your answers save in your own browser. Hover any word with a dotted underline for a plain-English definition.</p>
+</div>
+
+<h2>Syllabus</h2>
+<p>The stage numbers come from <a href="https://x.com/suraj_sharma14/status/2124827808535048566">Suraj Sharma's 12-stage FDE roadmap</a>. The course teaches the nine <span class="tag core">core</span> stages first, in the order the job runs them, then the three <span class="tag spec">specialist</span> ones that only some customers need.</p>
+
+<table>
+  <thead><tr><th class="num">#</th><th>Lesson</th><th>Stage</th><th></th></tr></thead>
+  <tbody>
+    <tr><td class="num">1</td><td><a href="lessons/0001-the-real-job-behind-the-roadmap.html">The real job behind the roadmap</a><br><span class="small">What FDEs do, what the ads ask for, the 12 stages sorted, your own evidence map, one deployment story.</span></td><td class="small">Overview</td><td></td></tr>
+    <tr><td class="num">2</td><td><a href="lessons/0002-discovery-and-scoping.html">Discovery and scoping</a><br><span class="small">Interview stakeholders, find the real metric, write a scoped four-week plan.</span></td><td class="small">11</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">3</td><td><a href="lessons/0003-enterprise-identity-for-agents.html">Enterprise identity for agents</a><br><span class="small">SSO, SCIM, roles, and row-level security so an agent sees only what its user may see.</span></td><td class="small">1</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">4</td><td><a href="lessons/0004-permission-filtered-retrieval.html">Permission-filtered retrieval</a><br><span class="small">Search that filters by permission before ranking, cites its sources and abstains.</span></td><td class="small">4</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">5</td><td>MCP and legacy integration <span class="small">· coming soon</span></td><td class="small">5</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">6</td><td>Legacy data and ETL <span class="small">· coming soon</span></td><td class="small">3</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">7</td><td>Human-in-the-loop and durable workflows <span class="small">· coming soon</span></td><td class="small">7</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">8</td><td>Evals on customer data <span class="small">· coming soon</span></td><td class="small">10</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">9</td><td>Telemetry, ROI and customer health <span class="small">· coming soon</span></td><td class="small">9</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">10</td><td>Handoff and self-serve admin <span class="small">· coming soon</span></td><td class="small">12</td><td><span class="tag core">core</span></td></tr>
+    <tr><td class="num">11</td><td>PII guardrails <span class="small">· coming soon</span></td><td class="small">6</td><td><span class="tag spec">specialist</span></td></tr>
+    <tr><td class="num">12</td><td>Air-gapped and VPC deployment <span class="small">· coming soon</span></td><td class="small">2</td><td><span class="tag spec">specialist</span></td></tr>
+    <tr><td class="num">13</td><td>Edge and on-prem inference <span class="small">· coming soon</span></td><td class="small">8</td><td><span class="tag spec">specialist</span></td></tr>
+  </tbody>
+</table>
+
+<h2>Reference</h2>
+<table>
+  <tbody>
+    <tr><td><a href="reference/fde-roadmap-map.html">The FDE roadmap, checked</a></td><td class="small">The role in four lines, the numbers worth remembering, all 12 stages with the evidence for each, and the deployment story template.</td></tr>
+    <tr><td><a href="reference/jargon.html">Jargon decoder</a></td><td class="small">Every abbreviation in the course, in plain English and searchable.</td></tr>
+  </tbody>
+</table>
+
+<h2>Code exercises</h2>
+<p>Some lessons include a small exercise you run on your own machine. You need <a href="https://bun.sh">Bun</a> and nothing else: the database exercises use <a href="https://pglite.dev">PGlite</a>, a real Postgres that runs inside the script.</p>
+<figure class="code"><pre><code>git clone https://github.com/kleenpulse/forward-deployed-engineering
+cd forward-deployed-engineering
+bun install
+bun exercises/0003-identity/start.ts</code></pre></figure>
+
+<div class="ask">
+  <p><strong>Questions, corrections, ideas?</strong> Ask in <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, or open an issue or pull request. Every lesson cites its sources. If one is wrong or out of date, say so.</p>
+</div>
+
+<p class="small">Lesson text is licensed <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>, code is MIT, and the fonts (Mozilla Text, Cascadia Code) are under the SIL Open Font License. Job-ad figures come from <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry's analysis of 1,000 FDE job ads</a>.</p>
+</main>
+<script src="assets/terms.js"></script>
+<script src="assets/tooltip.js"></script>
+</body>
+</html>

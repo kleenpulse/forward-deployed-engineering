@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reference · Jargon decoder</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="../lessons/0001-the-real-job-behind-the-roadmap.html">Lesson 1</a>
+  <a href="fde-roadmap-map.html">The roadmap, checked</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Reference</p>
+<h1>Jargon decoder</h1>
+<p class="subtitle">Every abbreviation and term of art in the course, in plain English. The same definitions appear when you hover a dotted word in a lesson.</p>
+
+<div class="search" role="search">
+  <label for="jargon-q">Search terms, full names and meanings <kbd>/</kbd></label>
+  <div class="row">
+    <input id="jargon-q" type="search" placeholder="Try RLS, on-prem or tenant" autocomplete="off" spellcheck="false" aria-controls="jargon">
+    <span class="count" id="jargon-count" aria-live="polite"></span>
+  </div>
+</div>
+
+<table class="no-terms fixed">
+  <colgroup><col style="width:24%"><col style="width:22%"><col></colgroup>
+  <thead><tr><th>Term</th><th>Stands for</th><th>Meaning</th></tr></thead>
+  <tbody id="jargon"></tbody>
+</table>
+
+</main>
+<script src="../assets/terms.js"></script>
+<script>
+  // Rendered from the same data the tooltips use, so the two never drift apart.
+  const all = [...window.FDE_TERMS].sort((a, b) => a.term.localeCompare(b.term, "en", { sensitivity: "base" }));
+  const body = document.getElementById("jargon");
+  const input = document.getElementById("jargon-q");
+  const count = document.getElementById("jargon-count");
+
+  const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  // Hyphens, dots and slashes count as spaces, so "on prem" finds "on-prem".
+  const norm = (s) => s.toLowerCase().replace(/[-./_]+/g, " ");
+  const words = (q) => norm(q).split(/\s+/).filter(Boolean);
+  const reEsc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+  const index = all.map((t) => ({
+    t,
+    name: norm([t.term, ...(t.match || [])].join(" ")),
+    hay: norm([t.term, t.full || "", ...(t.match || []), t.def].join(" ")),
+  }));
+
+  function mark(text, ws) {
+    if (!ws.length) return esc(text);
+    // Match each word allowing hyphens/dots where the query had spaces.
+    const re = new RegExp(`(${ws.map((w) => reEsc(w).replace(/ /g, "[-./_ ]")).join("|")})`, "gi");
+    // Split first, escape each piece, so a highlight never lands inside an entity.
+    return text.split(re).map((part, i) => (i % 2 ? `<mark>${esc(part)}</mark>` : esc(part))).join("");
+  }
+
+  function render() {
+    const q = input.value.trim();
+    const ws = words(q);
+    let rows = index.filter((r) => ws.every((w) => r.hay.includes(w)));
+    if (ws.length) {
+      // Rank: term starts with the query, then the term contains it, then meaning-only hits.
+      const whole = ws.join(" ");
+      const rank = (r) => (r.name.startsWith(whole) ? 0 : ws.every((w) => r.name.includes(w)) ? 1 : 2);
+      rows = rows.map((r, i) => [rank(r), i, r]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
+    }
+    const hl = ws.filter((w) => w.length > 1);
+    body.innerHTML = rows.length
+      ? rows.map(({ t }) =>
+          `<tr><td><strong>${mark(t.term, hl)}</strong></td><td class="small">${mark(t.full || "", hl)}</td><td>${mark(t.def, hl)}</td></tr>`
+        ).join("")
+      : `<tr class="empty"><td colspan="3">No term matches “${esc(q)}”. Ask me about it, and I'll add it here.</td></tr>`;
+    count.textContent = ws.length ? `${rows.length} of ${all.length}` : `${all.length} terms`;
+
+    const url = new URL(location.href);
+    if (q) url.searchParams.set("q", q); else url.searchParams.delete("q");
+    history.replaceState(null, "", url);
+  }
+
+  input.value = new URLSearchParams(location.search).get("q") || "";
+  input.addEventListener("input", render);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && input.value) { input.value = ""; render(); e.stopPropagation(); }
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest && e.target.closest("input, textarea, [contenteditable]")) return;
+    e.preventDefault();
+    input.focus();
+    input.select();
+  });
+  render();
+</script>
+</body>
+</html>

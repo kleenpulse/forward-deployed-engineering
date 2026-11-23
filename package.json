@@ -1,0 +1,13 @@
+{
+  "name": "forward-deployed-engineering",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "check": "bun scripts/check-lessons.ts"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.6.0",
+    "vite": "^8.3.8"
+  }
+}

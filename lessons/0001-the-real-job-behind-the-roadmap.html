@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 1 · The real job behind the roadmap</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0002-discovery-and-scoping.html">Lesson 2 →</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 1 · about 60 minutes</p>
+<h1>The real job behind the roadmap</h1>
+<p class="subtitle">A <a href="https://x.com/suraj_sharma14/status/2124827808535048566">12-stage FDE roadmap</a> by Suraj Sharma went viral on X in November 2026. Before you study any of it, check it against what FDE job ads actually ask for, and against what you've already shipped.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>By the end you'll have three things: the 12 stages sorted into <em>core</em> and <em>specialist</em>, a map of your own work against them, and one project rewritten as a <em>deployment story</em> you can tell in an interview.</p>
+</div>
+
+<h2>1 · One customer, many capabilities</h2>
+
+<p>Palantir invented the title, so start with their definition. A regular software engineer, a "Dev", builds one capability that many customers use. A Forward Deployed Software Engineer, a "Delta", does the opposite: they <em>enable many capabilities for a single customer</em>.<span class="sn-ref"></span><span class="sidenote numbered">"While a traditional software engineer, or 'Dev,' focuses on creating a single capability that can be used for many customers, FDSEs focus on enabling many capabilities for a single customer." <a href="https://blog.palantir.com/a-day-in-the-life-of-a-palantir-forward-deployed-software-engineer-45ef2de257b1">Palantir Blog, 2020</a>.</span> The FDE embeds with that customer, sometimes in their office, sometimes in their Slack or on their infrastructure, and does whatever it takes: code, data pipelines, configuration. Then they carry what they learned back to the product team.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://posthog.com/blog/forward-deployed-engineer">PostHog, "WTF is a forward deployed engineer?"</a> Travel is often 20–50% of the time.</span></p>
+
+<p>At Palantir a Delta is paired with an "Echo", a deployment strategist who owns the relationship and whether people actually adopt the tool.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://blog.palantir.com/dev-versus-delta-demystifying-engineering-roles-at-palantir-ad44c2a6e87">Palantir Blog, "Dev versus Delta"</a>.</span> But 58% of FDE roles are at companies of 11–200 people, where one FDE often covers both jobs. That's why ads ask for "business acumen" next to "production code".</p>
+
+<p>The title now covers <strong>three different jobs</strong>. In an analysis of 1,000 FDE job ads, 60% were <em>Builders</em> (70–90% coding, embedded with customers), 30% were sales engineers under a new name (30–40% coding, often with a quota), and 10% built internal sales tools.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry, "What I learned analyzing 1K forward deployed engineer jobs"</a>, updated Jan 2026.</span> This course aims at the Builder. Part of the skill is spotting the other two in an ad before you apply.</p>
+
+<p>The role is also moving. In May 2026 OpenAI launched a separate Deployment Company with $4B from private equity and bought Tomoro, a firm with 150 FDEs. Anthropic announced its own services company the same month. Gergely Orosz reads this as the role drifting towards "an AI-focused solutions architect or consultant", and translates a Google Cloud FDE ad as roughly <strong>25% coding, 50% integration and plumbing, 25% meetings</strong>.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://blog.pragmaticengineer.com/the-pulse-forward-deployed-engineering-heats-up-again/">The Pragmatic Engineer, "Forward deployed engineering heats up again"</a>, May 2026. His verdict: a great fit if you like shipping end-to-end with no spec, a poor fit if you want long greenfield projects.</span></p>
+
+<div class="callout">
+  <p><strong>Hold both truths.</strong> Demand is real: FDE job ads grew 1,165% year over year in 2025, and the median advertised base salary was $173,816.<span class="sn-ref"></span><span class="sidenote numbered">Both figures from the <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry analysis</a>, Jan–Oct 2025 vs. the same period in 2024.</span> "You will never be unemployed again" isn't. No roadmap can promise that.</p>
+</div>
+
+<h2>2 · What the ads actually ask for</h2>
+
+<p>Here's the evidence to check the roadmap against: the share of the 1,000 ads that mention each thing.</p>
+
+<h3>Responsibilities</h3>
+<div class="bars">
+  <div class="bar"><span>Working directly with customers</span><span class="track"><span class="fill" style="width:55%;display:block"></span></span><span class="val">55%</span></div>
+  <div class="bar"><span>Building and deploying AI/ML</span><span class="track"><span class="fill" style="width:37%;display:block"></span></span><span class="val">37%</span></div>
+  <div class="bar"><span>Integrating systems and APIs</span><span class="track"><span class="fill" style="width:32%;display:block"></span></span><span class="val">32%</span></div>
+</div>
+
+<h3>Skills</h3>
+<div class="bars">
+  <div class="bar"><span>Python</span><span class="track"><span class="fill" style="width:66%;display:block"></span></span><span class="val">66%</span></div>
+  <div class="bar"><span>AI agents</span><span class="track"><span class="fill" style="width:35%;display:block"></span></span><span class="val">35%</span></div>
+  <div class="bar"><span>TypeScript</span><span class="track"><span class="fill" style="width:35%;display:block"></span></span><span class="val">35%</span></div>
+  <div class="bar"><span>AWS</span><span class="track"><span class="fill" style="width:32%;display:block"></span></span><span class="val">32%</span></div>
+  <div class="bar"><span>LLM experience</span><span class="track"><span class="fill" style="width:31%;display:block"></span></span><span class="val">31%</span></div>
+  <div class="bar"><span>Kubernetes</span><span class="track"><span class="fill" style="width:14%;display:block"></span></span><span class="val">14%</span></div>
+  <div class="bar"><span>RAG</span><span class="track"><span class="fill" style="width:12%;display:block"></span></span><span class="val">12%</span></div>
+</div>
+
+<p>Three things to notice. First, <strong>customers come first</strong>, ahead of any technology. Second, Python is in two thirds of the ads and TypeScript in a third. If you only know one, that's a gap to close later, not today.<span class="sn-ref"></span><span class="sidenote numbered">Same source. 60% of ads that name a level ask for 3–5 years, 20% for 6–8, 12% for 0–2, 8% for 9+.</span> Third, the ads name regulated industries most often when they name one: finance 24%, government and defense 18%, healthcare 17%, insurance 17%. But 79% of ads name no industry at all.</p>
+
+<h2>3 · Sort the roadmap</h2>
+
+<p>For each stage of the roadmap, decide: does <em>every</em> FDE deployment need it, or only customers who are regulated or run their own hardware? Commit to an answer before you read the feedback. Guessing wrong and then reading why is the fastest way to learn it.</p>
+
+<script type="application/json" data-sort="l1-roadmap">
+{
+  "buckets": ["Every FDE deployment", "Only regulated or on-prem"],
+  "items": [
+    { "label": "Stage 1 · Enterprise identity & agent RBAC", "detail": "SSO (SAML/OIDC), SCIM provisioning, row-level security, delegated OAuth, scoped JWTs for tools.", "bucket": 0,
+      "why": "Every enterprise customer signs its people in through its own identity provider, and an agent must only see what the person using it can see. Palantir lists configuring \"specific data and workflow access controls\" as a typical FDE challenge (<a href=\"https://blog.palantir.com/a-day-in-the-life-of-a-palantir-forward-deployed-software-engineer-45ef2de257b1\">Palantir</a>)." },
+    { "label": "Stage 2 · Air-gapped & VPC inference", "detail": "Terraform/Helm in private VPCs, air-gapped registries, egress filtering, on-prem GPUs.", "bucket": 1,
+      "why": "This is the government and defense world (18% of ads that name an industry), where \"air-gapped systems, FedRAMP compliance, classified environments\" are the norm (<a href=\"https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/\">Bloomberry</a>). A real job, but not where you start." },
+    { "label": "Stage 3 · Legacy data extraction & ETL", "detail": "OCR, mainframe connectors, PDF parsing, messy CSVs, Airflow/dbt, reconciliation.", "bucket": 0,
+      "why": "Google's FDE ad names \"data readiness issues\" as a main blocker to production (<a href=\"https://blog.pragmaticengineer.com/the-pulse-forward-deployed-engineering-heats-up-again/\">Pragmatic Engineer</a>), and Palantir lists \"data engineering\" in the core skillset. The customer's data is always messier than the demo." },
+    { "label": "Stage 4 · Permission-filtered RAG & GraphRAG", "detail": "Document-level RBAC, hybrid search, tenant isolation, citations, abstention.", "bucket": 0,
+      "why": "\"Building RAG pipelines that don't hallucinate\" is on Bloomberry's short list of what to get good at. Nearly every enterprise AI deployment is an agent reading the customer's own documents." },
+    { "label": "Stage 5 · MCP & legacy system integration", "detail": "Raw JSON-RPC MCP servers, SOAP/REST translation, headless browser fallbacks, rate limits.", "bucket": 0,
+      "why": "Integrating systems and APIs is in 32% of ads, and Reducto's ad asks for \"MCP servers, sub-agents, and agent skills\" in production (<a href=\"https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/\">Bloomberry</a>). Gergely puts integration at about half the job." },
+    { "label": "Stage 6 · PII cryptography & guardrails", "detail": "Deterministic UUID swapping, NER redaction, unmasking proxies, format-preserving encryption, audit logs.", "bucket": 1,
+      "why": "Basic care with personal data is everyone's job. But the roadmap's version (format-preserving encryption, masking proxies, immutable audit logs) is what finance, healthcare and insurance customers demand, and those are the regulated industries the ads name most." },
+    { "label": "Stage 7 · Human-in-the-loop & durable workflows", "detail": "Temporal state machines, Slack/Teams approval gates, checkpointing, crash recovery.", "bucket": 0,
+      "why": "Google's ad names \"state-management challenges\" as a blocker to production, and Bloomberry's list includes \"agentic workflows that fail gracefully\". Any agent that does something real needs a human sign-off somewhere." },
+    { "label": "Stage 8 · Edge & on-prem local inference", "detail": "vLLM/TensorRT-LLM on customer hardware, AWQ/GGUF quantization, local small models.", "bucket": 1,
+      "why": "Only customers who can't send data to a hosted model run their own GPUs. The ads that name a model provider name hosted ones (OpenAI 8%, Anthropic 7%), and traditional ML tooling barely shows up (PyTorch 6%)." },
+    { "label": "Stage 9 · Telemetry, ROI & customer health", "detail": "OpenTelemetry for LLMs, cost per department, time-saved dashboards, silent-failure alerts.", "bucket": 0,
+      "why": "OpenAI measures its FDEs by \"production adoption, measurable workflow impact\" (<a href=\"https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/\">OpenAI job ad</a>). If you can't show the deployment is used and saves time, it gets cancelled." },
+    { "label": "Stage 10 · Shadow evals on customer data", "detail": "Golden sets from real logs, trajectory grading, LLM-as-judge calibration, business metrics.", "bucket": 0,
+      "why": "OpenAI's ad asks for \"eval-driven feedback that changes product and model roadmaps\". Evals are how you prove to a customer the agent works on <em>their</em> data, not a benchmark." },
+    { "label": "Stage 11 · Technical discovery & SOW scoping", "detail": "Stakeholder interviews, architecture diagrams, gap analysis, 4-week plans.", "bucket": 0,
+      "why": "This is the #1 duty in the ads (working with customers, 55%), and OpenAI's ad opens with \"own discovery, technical scoping\". The roadmap puts it eleventh. In the job it comes first." },
+    { "label": "Stage 12 · The handoff & self-serve admin", "detail": "Runbooks, IT enablement, chaos testing, admin portals for prompts and config.", "bucket": 0,
+      "why": "OpenAI's FDEs own delivery \"from first prototype to stable production\", and Palantir's FDEs do \"maintenance and monitoring of production systems\". A deployment the customer can't run without you isn't finished." }
+  ]
+}
+</script>
+
+<p><strong>The pattern:</strong> 9 of the 12 stages are core. The three specialist ones (2, 6 and 8) are what make the roadmap look frightening, and they're the ones to leave for later. Meanwhile the most-asked-for skill, working with customers, sits at Stage 11.</p>
+
+<h2>4 · Map your own evidence</h2>
+
+<p>Now turn the roadmap on yourself. For each stage, rate the proof you could show a hiring manager <em>today</em>. Be strict: it's your private map, and an honest one tells you where to start.</p>
+
+<table>
+  <tbody>
+    <tr><td><span class="tag strong">strong</span></td><td>Someone could check it now: a public repo, a write-up with numbers, a shipped feature you can demo and explain.</td></tr>
+    <tr><td><span class="tag partial">partial</span></td><td>You've done the idea at small scale, for example login and sessions in your own app but never SSO for a company, or a search box but no permissions on it.</td></tr>
+    <tr><td><span class="tag thin">thin</span></td><td>Little or nothing yet. Fine: that's what the lessons are for.</td></tr>
+  </tbody>
+</table>
+
+<script type="application/json" data-rate="l1-evidence">
+{
+  "levels": ["Strong", "Partial", "Thin"],
+  "items": [
+    { "short": "Stage 11 (discovery)", "label": "Stage 11 · Discovery & scoping", "detail": "Have you interviewed a client or user, turned what they said into a scoped plan, and said no to something?" },
+    { "short": "Stage 1 (identity)", "label": "Stage 1 · Enterprise identity & agent access", "detail": "Login, roles, permissions. Have you wired SSO, synced users from a company directory, or enforced access in the database?" },
+    { "short": "Stage 4 (retrieval)", "label": "Stage 4 · Permission-filtered retrieval", "detail": "Search or RAG over real documents, with citations, and only showing what each user may see." },
+    { "short": "Stage 5 (integration)", "label": "Stage 5 · MCP & legacy integration", "detail": "Connecting to awkward third-party systems; an MCP server or tool layer you wrote; handling rate limits." },
+    { "short": "Stage 3 (messy data)", "label": "Stage 3 · Legacy data & ETL", "detail": "Parsing PDFs, spreadsheets or exports that fight back; pipelines that move and clean data on a schedule." },
+    { "short": "Stage 7 (workflows)", "label": "Stage 7 · Human-in-the-loop & durable workflows", "detail": "Jobs that survive crashes and retries; a step where a human approves before the agent acts." },
+    { "short": "Stage 10 (evals)", "label": "Stage 10 · Evals on customer data", "detail": "A test set you grade your AI system against, with numbers you can quote." },
+    { "short": "Stage 9 (telemetry)", "label": "Stage 9 · Telemetry, ROI & customer health", "detail": "Tracing, cost tracking, usage dashboards; a number that shows the thing saves time or money." },
+    { "short": "Stage 12 (handoff)", "label": "Stage 12 · Handoff & self-serve admin", "detail": "Docs, runbooks or an admin screen that let someone else run what you built without you." },
+    { "short": "Stage 6 (PII)", "label": "Stage 6 · PII guardrails", "detail": "Redacting or masking personal data; audit logs.", "core": false },
+    { "short": "Stage 2 (VPC)", "label": "Stage 2 · Air-gapped & VPC deployment", "detail": "Infrastructure as code; deploying into a private cloud network.", "core": false },
+    { "short": "Stage 8 (local inference)", "label": "Stage 8 · Edge & on-prem inference", "detail": "Running a model on your own hardware; quantized local models.", "core": false }
+  ]
+}
+</script>
+
+<p><strong>How to read your map:</strong> most applicants can't show an eval or a discovery story at all, so a <em>strong</em> rating on Stage 10 or 11 is worth a lot. Close your core gaps before any specialist stage. The lessons follow the same order as the grid above, so the first stage you rated thin is a good place to start.</p>
+
+<h2>5 · Check yourself</h2>
+
+<p>Answer from memory. Don't scroll up first: a wrong answer you then correct sticks better than a right one you looked up.</p>
+
+<script type="application/json" data-quiz="l1-recall">
+{
+  "questions": [
+    { "q": "Palantir splits its engineers into Devs and Deltas. What does a Delta focus on?",
+      "options": ["One capability, many customers", "One demo, many prospects", "One customer, many capabilities", "One platform, many teams"],
+      "answer": 2,
+      "why": "A Dev builds one capability for many customers; a Delta (FDE) enables many capabilities for one customer (<a href=\"https://blog.palantir.com/a-day-in-the-life-of-a-palantir-forward-deployed-software-engineer-45ef2de257b1\">Palantir</a>)." },
+    { "q": "In the study of 1,000 FDE job ads, which responsibility showed up most often?",
+      "options": ["Working directly with customer teams", "Building and deploying AI systems", "Integrating systems and their APIs", "Running demos for sales teams"],
+      "answer": 0,
+      "why": "Working with customers: 55%. Building AI/ML: 37%. Integration: 32%. Hitting a sales quota never shows up as a duty (<a href=\"https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/\">Bloomberry</a>)." },
+    { "q": "Most FDE ads that name an experience level ask for…",
+      "options": ["Senior, 6 to 8 years", "Entry, 0 to 2 years", "Staff, 9 years or more", "Mid, 3 to 5 years"],
+      "answer": 3,
+      "why": "Mid-level (3–5 years) is 60% of ads that name a level. Senior is 20%, entry 12%, staff+ 8%." },
+    { "q": "Gergely Orosz translated a Google Cloud FDE ad into plain English. What takes the biggest share of the job?",
+      "options": ["Writing new product code", "Meetings and customer hand-holding", "Integration and plumbing work", "Admin and internal process"],
+      "answer": 2,
+      "why": "His reading: about 50% integration and plumbing, 25% coding, 25% meetings and hand-holding (<a href=\"https://blog.pragmaticengineer.com/the-pulse-forward-deployed-engineering-heats-up-again/\">Pragmatic Engineer</a>)." },
+    { "q": "A hospital wants an agent that drafts discharge notes from patient records. Which of these has to be in place before anything ships?",
+      "options": ["Edge quantization with GGUF models", "PII redaction and audit logging", "Usage-based billing meters per department", "Self-serve admin portal for prompts"],
+      "answer": 1,
+      "why": "Patient records are regulated personal data, so Stage 6 comes before launch. Quantization (8), billing (9) and an admin portal (12) can all wait." },
+    { "q": "You wrote 30 test conversations and scored your support agent's answers against them: 86% correct. Which stage does that prove?",
+      "options": ["Stage 9: customer telemetry", "Stage 4: permission-filtered RAG", "Stage 7: durable workflows", "Stage 10: shadow evals"],
+      "answer": 3,
+      "why": "Grading an AI system against a fixed set of cases is Stage 10. The next step up: cases taken from a customer's real logs instead of written by you." },
+    { "q": "Your search tool says \"I couldn't find that\" instead of guessing when no document scores high enough. In Stage 4's terms, that rule is called…",
+      "options": ["Abstention logic", "Citation grounding", "Hybrid search", "Metadata tagging"],
+      "answer": 0,
+      "why": "Abstention means declining to answer when the evidence is weak. Citation grounding means showing which documents an answer came from. Hybrid search merges keyword and meaning-based results." },
+    { "q": "Checked against the job ads, what is the roadmap's biggest blind spot?",
+      "options": ["It never mentions evals or grading", "Customer work comes eleventh, not first", "It leaves out AI agents entirely", "It ignores GPUs and local inference"],
+      "answer": 1,
+      "why": "Working with customers is the #1 duty in the ads, but the roadmap puts discovery at Stage 11. The other three are false: evals are Stage 10, agents run through Stages 1, 5 and 7, and GPUs are Stages 2 and 8." }
+  ]
+}
+</script>
+
+<h2>6 · Build: one deployment story</h2>
+
+<p>An FDE interview doesn't ask "what's your stack?". It asks "tell me about a time you shipped into a messy environment". A <strong>deployment story</strong> answers that in four parts: <em>who the customer was and what hurt</em>, <em>a constraint you didn't choose</em>, <em>what you shipped</em>, and <em>how you measured it</em>.</p>
+
+<div class="callout">
+  <p class="small">A worked example from a real client project. Notice it has no number yet: that's the usual weak spot, and the honest fix is to say what you <em>would</em> measure.</p>
+  <p><strong>Customer:</strong> A client's AI social-media platform. Their users were being signed out at random, mid-task.<br>
+  <strong>Constraint:</strong> Another team owned the backend, and it rotated refresh tokens. I couldn't change it.<br>
+  <strong>Shipped:</strong> I split the route guard into pure functions with a test for every branch, made cookie writes follow whichever response went back, and made parallel requests share one refresh.<br>
+  <strong>Measured:</strong> <em>Missing.</em> Should be "sign-out complaints per week, before and after" or "401s per 1,000 sessions".</p>
+</div>
+
+<p>Now write your own, from the project you rated strongest in section 4: paid work, open source, or a side project with real users. It saves in your browser as you type.</p>
+
+<script type="application/json" data-practice="l1-story">
+{
+  "title": "Deployment story",
+  "maxWords": 120,
+  "fields": [
+    { "key": "customer", "label": "Customer & what hurt", "hint": "Who, and the problem in their words. Not the tech." },
+    { "key": "constraint", "label": "A constraint you didn't choose", "hint": "Their stack, their team, their deadline, their data, a provider's limit." },
+    { "key": "shipped", "label": "What you shipped", "hint": "One or two sentences. No stack list." },
+    { "key": "measured", "label": "How you measured it", "hint": "A number, or exactly what you would measure." }
+  ],
+  "checks": [
+    "Names the customer and the pain before any technology",
+    "Names a constraint someone else imposed",
+    "Says what shipped in two sentences or fewer",
+    "Has a number, or names the exact metric I'd track",
+    "Mentions one thing I chose <em>not</em> to do, and why",
+    "120 words or fewer"
+  ]
+}
+</script>
+
+<p>When you're done, press <strong>Copy as Markdown</strong>. Keep it in your interview notes, or post it in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">Discussions</a> and ask for feedback the way a hiring manager would give it.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 20 minutes</p>
+  <p><a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">"What I learned analyzing 1K forward deployed engineer jobs"</a> by Henley Wing Chiu. Most of this lesson's numbers come from it. Read the parts on "Sales Engineer+" and "Internal Tools Builder" closely: those are the ads to skip. Then, if you have 7 more minutes, read <a href="https://blog.palantir.com/a-day-in-the-life-of-a-palantir-forward-deployed-software-engineer-45ef2de257b1">Palantir's day in the life of an FDSE</a>, especially its list of technical challenges.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. Good questions to bring: "Is FDE a step down from product engineering?", "Which of my projects makes the strongest FDE story?", "How do I spot a Sales-Engineer+ ad?". You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next: <a href="0002-discovery-and-scoping.html"><strong>Lesson 2, discovery and scoping</strong></a> (Stage 11). The roadmap puts it eleventh; the job puts it first. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/rate.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

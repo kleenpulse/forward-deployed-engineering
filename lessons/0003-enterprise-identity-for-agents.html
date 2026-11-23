@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 3 · Enterprise identity for agents</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0002-discovery-and-scoping.html">← Lesson 2</a>
+  <a href="0004-permission-filtered-retrieval.html">Lesson 4 →</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 3 · Stage 1 · about 60 minutes</p>
+<h1>Enterprise identity for agents</h1>
+<p class="subtitle">In your own apps you own the login. At an enterprise customer, their IT team owns it. Learn how their staff sign in, how accounts appear and disappear, and how to make sure an agent can never see more than the person it works for.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>By the end you can explain to a customer's IT team, in their own words, how their staff will sign in, how accounts are created and removed, and exactly what the agent can see. You will also have written a Postgres row-level security policy that stops an agent's query from reading another department's or another customer's rows, checked by seven automatic tests.</p>
+</div>
+
+<h2>1 · Your login versus their login</h2>
+
+<p>You already know how login works in an app you build. You keep a users table, hash passwords, set a session cookie, rotate refresh tokens, and a route guard checks the session before a page loads. You own every part of it.</p>
+
+<p>At an enterprise customer, almost none of that is yours. The customer already has an identity provider, such as Okta, Microsoft Entra ID or Google Workspace, that holds every employee's account. Their IT team will not create a second set of passwords for your app. They expect your app, <em>and your agent</em>, to plug into what they already run.</p>
+
+<p>Two words will keep you straight. <strong>Authentication</strong> answers "who are you?". <strong>Authorization</strong> answers "what may you do?". Your app's login form did both at once. In an enterprise they come apart, and each has its own standard. IT will ask you five questions, and each answer has a name:</p>
+
+<table>
+  <thead><tr><th>IT asks</th><th>Your answer</th><th>Called</th></tr></thead>
+  <tbody>
+    <tr><td>How will our staff sign in?</td><td>Through your identity provider. No new passwords.</td><td>SSO (via SAML or OIDC)</td></tr>
+    <tr><td>How are accounts created and removed?</td><td>Your identity provider pushes every change to us.</td><td>SCIM</td></tr>
+    <tr><td>Who can do what?</td><td>A few roles, mapped from your groups.</td><td>RBAC</td></tr>
+    <tr><td>Where is that enforced?</td><td>In the database, on every query.</td><td>Row-level security</td></tr>
+    <tr><td>What can the agent do, and as whom?</td><td>Only what the signed-in person can, with a narrow token for each tool.</td><td>Delegated, scoped tokens</td></tr>
+  </tbody>
+</table>
+
+<p>The rest of the lesson takes these one at a time, then you build the fourth one for real.</p>
+
+<h2>2 · SSO: SAML or OIDC, and what IT will ask you for</h2>
+
+<p>With SSO, your app stops checking passwords. It sends the person to the customer's identity provider, the provider signs them in, and it sends your app a signed statement saying who they are. In SAML's terms, the identity provider is "the entity providing the identities, including the ability to authenticate a user", and your app is the <em>service provider</em>, "the entity providing the service, typically in the form of an app".<span class="sn-ref"></span><span class="sidenote numbered">Both definitions from <a href="https://developer.okta.com/docs/concepts/saml/">Okta Developer, "Understand SAML"</a>.</span></p>
+
+<p>There are two standards for that signed statement, and enterprise IT teams support one or both:</p>
+
+<ul>
+  <li><strong>SAML</strong> is the older one. The statement is an XML document called a <em>SAML assertion</em>. The browser posts it to an address on your app.</li>
+  <li><strong>OIDC</strong> "is a simple identity layer on top of the OAuth 2.0 protocol".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openid.net/specs/openid-connect-core-1_0.html">OpenID Connect Core 1.0</a>, Abstract. Section 2 defines the ID token as "a security token that contains Claims about the Authentication of an End-User", "represented as a JSON Web Token (JWT)".</span> The statement is an <em>ID token</em>, which is a JWT. It is the OAuth redirect flow you may already know, plus that token.</li>
+</ul>
+
+<p>You don't need to implement either protocol by hand: a library does that. What you need is to know which values to swap with IT, because that is the whole setup meeting. Here is what Microsoft Entra ID asks for. Other providers use similar names.</p>
+
+<table>
+  <thead><tr><th></th><th>You give IT</th><th>IT gives you</th></tr></thead>
+  <tbody>
+    <tr><td><strong>SAML</strong></td><td><em>Reply URL (Assertion Consumer Service URL)</em>: where the browser posts the assertion. <em>Identifier (Entity ID)</em>: your app's name, usually a URL. <em>Sign on URL</em>.</td><td><em>Login URL</em>, their <em>Microsoft Entra Identifier</em>, and a <em>signing certificate</em> so you can check the assertion really came from them.<span class="sn-ref"></span><span class="sidenote numbered">Field names from <a href="https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/add-application-portal-setup-sso">Microsoft Learn, "Enable SAML single sign-on for an enterprise application"</a>.</span></td></tr>
+    <tr><td><strong>OIDC</strong></td><td>Your <em>redirect URI</em>: where the provider sends the person back. It must exactly match what is registered.</td><td>An <em>Application (client) ID</em>, a client secret or key for your server, and their tenant's discovery document, for example <code>https://login.microsoftonline.com/{tenant}/v2.0/.well-known/openid-configuration</code>, which lists every endpoint and signing key.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc">Microsoft Learn, "OpenID Connect on the Microsoft identity platform"</a>. Its sample discovery document lists <code>client_secret_post</code> and <code>private_key_jwt</code> as the ways a server can prove who it is.</span></td></tr>
+  </tbody>
+</table>
+
+<p>Support whichever one the customer's IT team runs. If you get to choose, OIDC is closer to what you know: JSON, JWTs and OAuth redirects.</p>
+
+<p>When an ID token arrives, a library validates it, but you should know what it checks. The token claims that matter most are <code>iss</code> (who issued it), <code>sub</code> (who it is about), <code>aud</code> (who it is for) and <code>exp</code> (when it expires). The issuer from the discovery document "MUST exactly match the value of the iss (issuer) Claim", and the token must be rejected if its audience does not include your client ID.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation">OpenID Connect Core 1.0, section 3.1.3.7</a>, "ID Token Validation".</span> Then key the person in your database by issuer plus <code>sub</code>, not by email. The spec defines <code>sub</code> as "a locally unique and never reassigned identifier within the Issuer for the End-User". An email address can change or be reused for a new hire.</p>
+
+<h2>3 · SCIM: the day someone leaves</h2>
+
+<p>SSO only acts at sign-in. Say Lee leaves on Friday and IT disables Lee in the identity provider. Lee can't start a new sign-in. But the session cookie and refresh token your app already gave Lee are yours, not the identity provider's, so they keep working. An agent job running on Lee's behalf keeps running too. Even Microsoft's own sign-out ends the session in one app while the user "may still be signed in to other applications".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc#single-sign-out">Microsoft Learn, OIDC on the Microsoft identity platform, "Single sign-out"</a>. That's why it offers a front-channel logout address that each app must handle itself.</span> Closing that gap is what SCIM is for.</p>
+
+<p>SCIM is "an HTTP-based protocol that makes managing identities in multi-domain scenarios easier".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://datatracker.ietf.org/doc/html/rfc7644">RFC 7644, SCIM Protocol</a>, Abstract. The user and group schemas, including the <code>active</code> attribute, are in <a href="https://datatracker.ietf.org/doc/html/rfc7643#section-4.1.1">RFC 7643, section 4.1.1</a>: "A Boolean value indicating the user's administrative status."</span> In practice your app exposes a small REST API, <code>/Users</code> and <code>/Groups</code>, and the customer's identity provider calls it. You don't call them; they call you.</p>
+
+<ul>
+  <li><strong>Provisioning.</strong> A new hire is assigned to your app, and the identity provider creates their user in your app before they ever sign in.</li>
+  <li><strong>Updates.</strong> Someone moves from Support to Finance, and your copy of their department changes.</li>
+  <li><strong>Deprovisioning.</strong> Microsoft Entra ID usually disables before it deletes: "For SCIM applications, a disable is a request to set the <em>active</em> property to false". A user deleted in Entra is permanently deleted 30 days later, and only then does Entra send a <code>DELETE</code> request to your app.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://learn.microsoft.com/en-us/entra/identity/app-provisioning/how-provisioning-works">Microsoft Learn, "How Application Provisioning works in Microsoft Entra ID"</a>, section "Deprovisioning". It also recommends: "always support both soft-deletes and hard-deletes."</span> After a <code>DELETE</code>, the SCIM spec says you answer 204 (No Content) and from then on "MUST return a 404 (Not Found) error code for all operations associated with the previously deleted resource".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://datatracker.ietf.org/doc/html/rfc7644#section-3.6">RFC 7644, section 3.6</a>, "Deleting Resources".</span></li>
+</ul>
+
+<p>So when your SCIM endpoint receives <code>active: false</code>, a database flag isn't enough. End their sessions, revoke their refresh tokens, stop every agent job running for them, and make sure the database stops returning their rows. The exercise checks that last part: Lee is in the data with <code>active = false</code>.</p>
+
+<h2>4 · RBAC: roles, not people</h2>
+
+<p>RBAC is the plain idea that "each user is assigned one or more roles, and each role is assigned one or more privileges".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://csrc.nist.gov/projects/role-based-access-control">NIST, Role Based Access Control project</a>. The NIST model became an American National Standard in 2004.</span> Nobody gets permissions one by one. In an enterprise, the roles usually come from the customer's groups. IT assigns a group to your app in the identity provider, and Entra provisions or deprovisions people "based on whether they're members of a group that's assigned to the application".<span class="sn-ref"></span><span class="sidenote numbered">Same <a href="https://learn.microsoft.com/en-us/entra/identity/app-provisioning/how-provisioning-works">Entra provisioning page</a>, "Assignment-based scoping".</span> Your job is a short mapping: group <code>Finance-Staff</code> becomes role <code>member</code> in the Finance department, and group <code>IT-Admins</code> becomes <code>admin</code>. Keep it to a few roles that IT can understand without you.</p>
+
+<div class="callout">
+  <p><strong>One word, two meanings.</strong> In this lesson "role" means two different things. An <em>RBAC role</em> (member, admin) is a business idea, stored as data in your users table. A <em>database role</em> is the identity a connection uses inside Postgres. The agent uses one database role, <code>agent</code>, for everyone. The human's RBAC role is something the database looks up.</p>
+</div>
+
+<h2>5 · Enforce it in the database: row-level security</h2>
+
+<p>An agent composes queries for you, through tools you write. If the only thing that keeps Finance's agent out of HR's files is a <code>WHERE</code> clause in each tool, or a line in the prompt, one forgotten clause leaks everything. Row-level security moves that filter into Postgres itself, so it applies to every query on the table, whoever wrote it.</p>
+
+<p>Three facts from the Postgres docs do most of the work:</p>
+
+<ul>
+  <li><strong>Default deny.</strong> Once RLS is on for a table, every row read or changed "must be allowed by a row security policy". "If no policy exists for the table, a default-deny policy is used, meaning that no rows are visible or can be modified."</li>
+  <li><strong>Some roles skip it.</strong> "Superusers and roles with the <code>BYPASSRLS</code> attribute always bypass the row security system when accessing a table. Table owners normally bypass row security as well", unless you add <code>FORCE ROW LEVEL SECURITY</code>. So the agent must connect as its own plain role, never as the owner.</li>
+  <li><strong>Policies add up.</strong> When several policies apply, permissive ones (the default) combine with <code>OR</code> and restrictive ones with <code>AND</code>.<span class="sn-ref"></span><span class="sidenote numbered">All three quotes from <a href="https://www.postgresql.org/docs/current/ddl-rowsecurity.html">PostgreSQL docs, "Row Security Policies"</a>. A policy's <code>USING</code> expression filters the rows a command can see. <code>WITH CHECK</code> limits the rows it can write.</span></li>
+</ul>
+
+<p>The policy must know <em>who</em> the agent is working for. The common pattern: before each query, your server writes the signed-in person's id into a setting, and the policy reads it back.</p>
+
+<ul>
+  <li><code>set_config('app.user_id', id, true)</code> sets it. With <code>true</code>, "the new value will only apply during the current transaction".</li>
+  <li><code>current_setting('app.user_id', true)</code> reads it. The <code>true</code> means "return NULL instead of an error if it was never set".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/functions-admin.html">PostgreSQL docs, "System Administration Functions"</a>, Configuration Settings Functions.</span></li>
+</ul>
+
+<p>Keep the setting transaction-local. Servers reuse database connections from a connection pool, so a setting that outlives its transaction could carry Ana's id into Ben's next request. And the id must come from the token your server verified, never from anything the model wrote.</p>
+
+<h2>6 · The agent twist: act as the human, not as a god</h2>
+
+<p>The quick way to wire up an agent is one service account that can read everything, plus a prompt that says what not to show. That agent can reach the sum of everyone's data, and one clever question or one buggy tool is enough to leak it. (In Lesson 2, Northfield's pilot read order data through a service account. That works while every user may see every row it reads. Once different people may see different rows, the agent needs to know who it is working for.) The safer rule: <strong>the agent acts with the signed-in person's permissions, and each tool gets a token that can do only that tool's job.</strong></p>
+
+<p>MCP, the standard way to connect agents to tools, writes this down in its authorization spec. The current version is dated 2026-07-28:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">MCP specification 2026-07-28, "Authorization"</a>. It builds on the OAuth 2.1 draft plus several RFCs, including RFC 8707 (resource indicators) and RFC 9728 (protected resource metadata).</span></p>
+
+<ul>
+  <li><strong>Authorization is optional, and depends on the transport.</strong> Servers reached over HTTP "SHOULD conform to this specification". Local servers over STDIO "SHOULD NOT follow this specification, and instead retrieve credentials from the environment". In practice, a local tool with an API key in an environment variable acts as whoever owns that key, which is a service account. Ask whose key it is.</li>
+  <li><strong>The client acts for a person.</strong> The MCP server is an OAuth 2.1 resource server, and the MCP client makes requests "on behalf of a resource owner": the human.</li>
+  <li><strong>Each token belongs to one server.</strong> The client must name the server it wants a token for (the <code>resource</code> parameter). The server "MUST validate that access tokens were issued specifically for them as the intended audience" and "MUST NOT accept or transit any other tokens".</li>
+  <li><strong>No passthrough.</strong> When your MCP server calls the customer's ticketing system, it needs a separate token for that system. Forwarding the user's token is "token passthrough", which the spec "explicitly" forbids. It breaks audit trails and lets a stolen token reach every service that would accept it.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/latest/basic/security_best_practices">MCP, "Security Best Practices"</a>, sections "Token Passthrough" ("MCP servers MUST NOT accept any tokens that were not explicitly issued for the MCP server") and "Scope Minimization".</span></li>
+  <li><strong>Narrow OAuth scopes, then step up.</strong> Clients "SHOULD follow the principle of least privilege by requesting only the scopes necessary". When a token lacks a scope, the server answers 403 with <code>error="insufficient_scope"</code> and the scope it needs, and the client asks the person for more. The best-practices guide warns against broad scopes like <code>files:*</code>, <code>db:*</code> and <code>admin:*</code>, because a stolen broad token reaches everything they cover.</li>
+</ul>
+
+<p>How does a server get that separate, narrower token and still say who it's for? One standard answer is OAuth token exchange. It trades a <code>subject_token</code> ("the party on behalf of whom the request is being made") and optionally an <code>actor_token</code> ("the acting party") for a new token. A field in the new token, <code>act</code>, records that "delegation has occurred", so logs show both the human and the agent.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://datatracker.ietf.org/doc/html/rfc8693">RFC 8693, OAuth 2.0 Token Exchange</a>, sections 1.1 and 2.1. It separates <em>delegation</em> (the agent keeps its own identity) from <em>impersonation</em> (the agent becomes the user).</span> Whether the customer's identity provider supports it is a question for IT.</p>
+
+<p>Put together, one request looks like this:</p>
+
+<ol>
+  <li>Ana signs in through SSO. Your server validates her ID token and knows she is <code>u-ana</code>.</li>
+  <li>Ana asks the agent a question. The agent calls the documents tool with an access token whose audience is that tool's server and whose scope is read-only.</li>
+  <li>The tool's server validates the token, opens a transaction, runs <code>set_config('app.user_id', 'u-ana', true)</code>, switches to the <code>agent</code> database role and runs the query.</li>
+  <li>Postgres applies the RLS policy and returns only rows Ana may see. SCIM keeps her department, role and <code>active</code> flag up to date, so the policy always checks today's facts.</li>
+</ol>
+
+<h2>7 · Sort the requirements</h2>
+
+<p>Customers rarely say "we need SCIM". They describe what they want. Sort each requirement into the piece that delivers it. Commit to an answer before you read the feedback.</p>
+
+<script type="application/json" data-sort="l3-pieces">
+{
+  "buckets": ["SSO", "SCIM", "RBAC", "Row-level security", "Scoped token"],
+  "items": [
+    { "label": "Staff sign in with their Microsoft work account. No new password.", "bucket": 0,
+      "why": "Signing in through the customer's identity provider is SSO. With Microsoft Entra ID that's SAML or OIDC (<a href=\"https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/add-application-portal-setup-sso\">Microsoft Learn</a>)." },
+    { "label": "A new hire in Accounts Payable has an account in your app before their first day.", "bucket": 1,
+      "why": "Creating users before they ever sign in is provisioning. The identity provider calls your SCIM <code>/Users</code> endpoint (<a href=\"https://datatracker.ietf.org/doc/html/rfc7644\">RFC 7644</a>)." },
+    { "label": "Someone leaves on Friday. By the next sync, their sessions end and the agent stops working for them.", "bucket": 1,
+      "why": "Deprovisioning. Entra sends <code>active: false</code> to your SCIM endpoint (<a href=\"https://learn.microsoft.com/en-us/entra/identity/app-provisioning/how-provisioning-works\">Microsoft Learn</a>). Ending sessions and agent jobs when that arrives is your code's job." },
+    { "label": "Team leads can approve refunds. Everyone else can only draft them.", "bucket": 2,
+      "why": "Permissions attached to a role (team lead), not to named people, is RBAC (<a href=\"https://csrc.nist.gov/projects/role-based-access-control\">NIST</a>)." },
+    { "label": "IT maps the Okta group “Finance-Leads” to your app's Approver role.", "detail": "They want to manage it in Okta, not in your app.", "bucket": 2,
+      "why": "Mapping the customer's groups to a few roles in your app is the usual shape of RBAC in an enterprise. SCIM may carry the group membership, but the requirement here is the role." },
+    { "label": "Even if a tool's SQL forgets its WHERE clause, another hospital's records never come back.", "bucket": 3,
+      "why": "Filtering inside the database, whatever query arrives, is row-level security. With RLS on, a row is returned only if a policy allows it (<a href=\"https://www.postgresql.org/docs/current/ddl-rowsecurity.html\">PostgreSQL docs</a>)." },
+    { "label": "Whatever the agent asks for, Postgres returns only the tickets the signed-in nurse may see.", "bucket": 3,
+      "why": "The database decides per row, using the person's id set for that transaction. The agent's query can ask for everything; RLS still filters it." },
+    { "label": "The calendar tool's token can read events but cannot send invites.", "bucket": 4,
+      "why": "A token limited to certain actions is a scoped token. MCP clients should request \"only the scopes necessary\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization\">MCP authorization spec</a>)." },
+    { "label": "A token minted for the CRM tool's server is refused by the billing tool's server.", "bucket": 4,
+      "why": "Tokens are bound to one audience. MCP servers \"MUST validate that access tokens were issued specifically for them\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization\">MCP authorization spec</a>)." },
+    { "label": "Your MCP server calls the ticketing system with its own token for that system, not the user's token.", "bucket": 4,
+      "why": "Passing the user's token through is forbidden. The server gets a separate token issued for the downstream system (<a href=\"https://modelcontextprotocol.io/specification/latest/basic/security_best_practices\">MCP security best practices</a>)." }
+  ]
+}
+</script>
+
+<h2>8 · Build it: a policy that keeps the agent in its lane</h2>
+
+<p>Now write the policy yourself. The exercise runs real Postgres inside the script with PGlite, so you don't need a database server, an account or a key. From the course folder, run:</p>
+
+<pre><code>bun install
+bun exercises/0003-identity/start.ts</code></pre>
+
+<p>The data: two customers (tenants), Acme and Globex, in one database. Acme has Ana in Finance, Ben in HR, Omar as an admin, and Lee, who left and was deactivated by SCIM. Globex has Gia in Finance. The agent's search tool runs like this, for whichever person it is working for:</p>
+
+<figure class="code"><figcaption>exercises/0003-identity/harness.ts (excerpt)</figcaption><pre><code><span class="c">// The agent's "search" tool. It asks for everything on purpose: the database,</span>
+<span class="c">// not the prompt, must decide what comes back.</span>
+const AGENT_QUERY = "select id from docs order by id";
+
+async function agentQuery(db: PGlite, userId: string | null): Promise&lt;number[]&gt; {
+  return db.transaction(async (tx) =&gt; {
+    <span class="c">// true = this setting only lasts until the end of this transaction.</span>
+    if (userId !== null) await tx.query("select set_config('app.user_id', $1, true)", [userId]);
+    await tx.exec("set local role agent");
+    const { rows } = await tx.query&lt;{ id: number }&gt;(AGENT_QUERY);
+    return rows.map((r) =&gt; r.id);
+  });
+}</code></pre></figure>
+
+<p>Before you write anything, the agent role can read every row of both customers. That's the god-mode service account from section 6:</p>
+
+<pre><code>FAIL  Ana (Acme finance) sees Acme's finance docs      expected [1,2], got [1,2,3,4,5,6,7]
+FAIL  Ben (Acme HR) sees only Acme's HR docs           expected [3,4], got [1,2,3,4,5,6,7]
+FAIL  Omar (Acme admin) sees every Acme doc            expected [1,2,3,4,5], got [1,2,3,4,5,6,7]
+FAIL  Gia (Globex finance) sees only Globex finance    expected [6], got [1,2,3,4,5,6,7]
+FAIL  Lee (deactivated by SCIM) sees nothing           expected [], got [1,2,3,4,5,6,7]
+FAIL  Unknown user id sees nothing                     expected [], got [1,2,3,4,5,6,7]
+FAIL  No user set (agent forgot) sees nothing          expected [], got [1,2,3,4,5,6,7]
+
+0/7 passed</code></pre>
+
+<p>Open <code>exercises/0003-identity/start.ts</code> and fill in the two TODOs:</p>
+
+<figure class="code"><figcaption>exercises/0003-identity/start.ts</figcaption><pre><code>const POLICY_SQL = /* sql */ `
+  <span class="c">-- TODO 1: turn on row-level security for the docs table.</span>
+
+  <span class="c">-- TODO 2: create a SELECT policy for the agent role on docs.</span>
+  <span class="c">--         Its USING (...) expression is checked against every row.</span>
+`;</code></pre></figure>
+
+<p>The rules: a person sees docs from their own tenant only, from their own department unless their RBAC role is <code>admin</code>, and nothing at all if they are inactive, unknown or not set. Read <code>app_users</code> inside the policy rather than trusting values passed in, so a SCIM change takes effect on the very next query. Run the file after each change.</p>
+
+<p><strong>Two things you'll probably see on the way.</strong> If you only do TODO 1, default deny kicks in and nobody sees anything. The three "sees nothing" cases pass, for the wrong reason:</p>
+
+<pre><code>FAIL  Ana (Acme finance) sees Acme's finance docs      expected [1,2], got []
+FAIL  Ben (Acme HR) sees only Acme's HR docs           expected [3,4], got []
+FAIL  Omar (Acme admin) sees every Acme doc            expected [1,2,3,4,5], got []
+FAIL  Gia (Globex finance) sees only Globex finance    expected [6], got []
+PASS  Lee (deactivated by SCIM) sees nothing           got []
+PASS  Unknown user id sees nothing                     got []
+PASS  No user set (agent forgot) sees nothing          got []
+
+3/7 passed</code></pre>
+
+<p>A common first policy matches on department alone: <code>using (department = (select department from app_users where id = current_setting('app.user_id', true)))</code>. It looks right and leaks across customers, because Acme and Globex both have a "finance" department. It also ignores admins and deactivated users:</p>
+
+<pre><code>FAIL  Ana (Acme finance) sees Acme's finance docs      expected [1,2], got [1,2,6]
+FAIL  Ben (Acme HR) sees only Acme's HR docs           expected [3,4], got [3,4,7]
+FAIL  Omar (Acme admin) sees every Acme doc            expected [1,2,3,4,5], got []
+FAIL  Gia (Globex finance) sees only Globex finance    expected [6], got [1,2,6]
+FAIL  Lee (deactivated by SCIM) sees nothing           expected [], got [1,2,6]
+PASS  Unknown user id sees nothing                     got []
+PASS  No user set (agent forgot) sees nothing          got []
+
+2/7 passed</code></pre>
+
+<p>Stop here until all seven pass, or until you've been stuck for 15 minutes. Then compare with the worked solution.</p>
+
+<figure class="code"><figcaption>exercises/0003-identity/solution.ts</figcaption><pre><code>const POLICY_SQL = /* sql */ `
+  <span class="c">-- With RLS on and no policy, the agent would see nothing (default deny).</span>
+  alter table docs enable row level security;
+
+  <span class="c">-- One permissive policy: a row is visible if the human the agent works for</span>
+  <span class="c">-- is active, in the same tenant, and either an admin or in the same department.</span>
+  <span class="c">-- The role and active flag are read from app_users on every query, so when</span>
+  <span class="c">-- SCIM deactivates someone, the agent loses their access at once.</span>
+  create policy agent_reads_docs on docs
+    for select
+    to agent
+    using (
+      exists (
+        select 1
+        from app_users u
+        where u.id = current_setting('app.user_id', true)
+          and u.active
+          and u.tenant = docs.tenant
+          and (u.role = 'admin' or u.department = docs.department)
+      )
+    );
+`;</code></pre></figure>
+
+<pre><code>$ bun exercises/0003-identity/solution.ts
+PASS  Ana (Acme finance) sees Acme's finance docs      got [1,2]
+PASS  Ben (Acme HR) sees only Acme's HR docs           got [3,4]
+PASS  Omar (Acme admin) sees every Acme doc            got [1,2,3,4,5]
+PASS  Gia (Globex finance) sees only Globex finance    got [6]
+PASS  Lee (deactivated by SCIM) sees nothing           got []
+PASS  Unknown user id sees nothing                     got []
+PASS  No user set (agent forgot) sees nothing          got []
+
+7/7 passed</code></pre>
+
+<p>Notice what the solution does <em>not</em> do. The agent's query has no <code>WHERE</code> clause. The tenant check comes first, so even an admin can't reach another customer. And the agent never runs as the owner or a superuser. PGlite connects as a superuser by default, which is why the harness switches to <code>agent</code> with <code>set local role</code>. Without that line, every test would see every row.</p>
+
+<p class="small">Going further: the agent can only read here. If you let it write, add <code>grant insert on docs to agent</code> and a <code>for insert</code> policy with a <code>WITH CHECK</code> expression, so it can't create a document in another department. Test it the same way.</p>
+
+<h2>9 · Check yourself</h2>
+
+<p>Answer from memory. A wrong answer you then correct sticks better than a right one you looked up. The last two questions come from Lessons 1 and 2.</p>
+
+<script type="application/json" data-quiz="l3-recall">
+{
+  "questions": [
+    { "q": "A customer's IT team writes: “Send us your Reply URL and Entity ID, and we'll send back our signing certificate.” Which protocol are they setting up?",
+      "options": ["SCIM", "OIDC", "SAML", "RBAC"],
+      "answer": 2,
+      "why": "Reply URL (Assertion Consumer Service URL), Identifier (Entity ID) and a signing certificate are Entra's SAML setup fields (<a href=\"https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/add-application-portal-setup-sso\">Microsoft Learn</a>). OIDC would ask for a redirect URI and give you a client ID." },
+    { "q": "IT disabled Lee in the identity provider on Friday. Your app has SSO but no SCIM. What can still happen on Monday?",
+      "options": ["Lee starts a fresh SSO sign-in", "Lee's old session and jobs continue", "Lee's IdP password still works anywhere", "Lee's account is deleted from Postgres"],
+      "answer": 1,
+      "why": "SSO only acts at sign-in, so a new sign-in fails. But sessions, refresh tokens and agent jobs your app already created for Lee live in your app. SCIM is how the identity provider tells you to switch them off, by setting <code>active</code> to false (<a href=\"https://learn.microsoft.com/en-us/entra/identity/app-provisioning/how-provisioning-works\">Microsoft Learn</a>)." },
+    { "q": "You turn on row-level security for the docs table but haven't written any policy yet. What does the agent role see?",
+      "options": ["Every row in the table", "Only rows it inserted itself", "Rows from its own tenant", "No rows: default deny applies"],
+      "answer": 3,
+      "why": "\"If no policy exists for the table, a default-deny policy is used, meaning that no rows are visible or can be modified\" (<a href=\"https://www.postgresql.org/docs/current/ddl-rowsecurity.html\">PostgreSQL docs</a>). You saw it in the exercise: 3/7 passing, for the wrong reason." },
+    { "q": "Your policy is correct, yet the agent still sees every row. What is the most likely cause?",
+      "options": ["The agent connects as a superuser", "The policy needs a WITH CHECK", "The table has too many rows", "The agent's query lacks a WHERE"],
+      "answer": 0,
+      "why": "\"Superusers and roles with the BYPASSRLS attribute always bypass the row security system\", and table owners normally do too (<a href=\"https://www.postgresql.org/docs/current/ddl-rowsecurity.html\">PostgreSQL docs</a>). WITH CHECK limits writes, not reads, and a missing WHERE is exactly what RLS covers." },
+    { "q": "A policy checks only that a doc's department matches the user's department. In the exercise data, what goes wrong?",
+      "options": ["Ana sees Globex's finance budget too", "Ben loses access to HR docs", "Unknown users suddenly see every row", "The agent with no user crashes"],
+      "answer": 0,
+      "why": "Acme and Globex both have a finance department, so a department-only policy leaks across tenants. Check the tenant first. That policy also hid everything from Omar, the admin, and let Lee, who was deactivated, keep reading." },
+    { "q": "Your MCP server receives a user's access token and must call the customer's ticketing system. What does the MCP authorization spec require?",
+      "options": ["Forward the same token to the ticketing system", "Use a separate token issued for that system", "Use the server's admin key for every user", "Ask the model to pick the right token"],
+      "answer": 1,
+      "why": "MCP servers \"MUST NOT accept or transit any other tokens\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization\">MCP authorization spec</a>), and token passthrough is \"explicitly forbidden\" (<a href=\"https://modelcontextprotocol.io/specification/latest/basic/security_best_practices\">security best practices</a>). An admin key for everyone is the god-mode service account again." },
+    { "q": "From Lesson 1: in the study of 1,000 FDE job ads, roughly what share were “Builders”, the mostly-coding kind?",
+      "options": ["About 10 percent", "About 30 percent", "About 60 percent", "About 90 percent"],
+      "answer": 2,
+      "why": "60% Builders (70–90% coding), 30% sales engineers under a new name, 10% internal tools builders (<a href=\"https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/\">Bloomberry</a>)." },
+    { "q": "From Lesson 2: in a discovery interview, which kind of question gets you facts instead of polite guesses?",
+      "options": ["Specifics from the past", "Opinions about the future", "Features they would want", "Prices they would pay"],
+      "answer": 0,
+      "why": "The Mom Test's rule: \"Ask about specifics in the past instead of generics or opinions about the future\" (<a href=\"https://www.momtestbook.com/\">Rob Fitzpatrick</a>). For identity, that means \"How do staff sign in today, and what happened with the last new tool?\", not \"Will SSO be a problem?\"" }
+  ]
+}
+</script>
+
+<h2>10 · Write it for IT</h2>
+
+<p>Now the other half of the win: the note you'd send a customer's IT team before the setup call. Imagine the customer is Acme, on Microsoft Entra ID, and the agent answers questions from Acme's documents. Write it for an IT admin, not a developer: they know SAML and SCIM better than you, but they don't know your app. It saves as you type.</p>
+
+<script type="application/json" data-practice="l3-it-note">
+{
+  "title": "Note to the customer's IT team",
+  "maxWords": 180,
+  "fields": [
+    { "key": "signin", "label": "How your staff sign in", "hint": "One protocol, the values you need from IT, and the values you'll send them." },
+    { "key": "accounts", "label": "How accounts appear and disappear", "hint": "SCIM: what happens on someone's first day and their last, including the agent." },
+    { "key": "roles", "label": "Who can do what", "hint": "Two or three roles, and which of their groups map to each." },
+    { "key": "agent", "label": "What the agent can see and do", "hint": "Whose permissions it uses, where that's enforced, and what each tool's token allows." }
+  ],
+  "checks": [
+    "Names one protocol and the exact values to exchange (SAML: Reply URL, Entity ID, signing certificate; OIDC: redirect URI, client ID, discovery document)",
+    "Says what happens when someone is deactivated: sessions end, refresh tokens are revoked, agent jobs stop, their rows stop coming back",
+    "Maps each role to a named group in their identity provider",
+    "Says the agent acts as the signed-in person and can never see more than that person can",
+    "Says that limit is enforced in the database (row-level security), not in the prompt",
+    "Names each tool token's scope, and says tokens are never passed on to other systems",
+    "180 words or fewer"
+  ]
+}
+</script>
+
+<p>Then check it against the list. If a check fails, fix the note, not the list. Press <strong>Copy as Markdown</strong> to keep it: it's a good template for your first real customer.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 25 minutes</p>
+  <p><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization">The MCP authorization specification (2026-07-28)</a>. It's where enterprise identity meets agents, and few applicants have read it. Read "Roles", "Scope Selection Strategy", "Access Token Usage" and "Error Handling" closely, and skim the discovery and registration details. Then spend 10 minutes on the <a href="https://www.postgresql.org/docs/current/ddl-rowsecurity.html">Postgres page on row security policies</a>, especially its examples with <code>current_user</code> and restrictive policies.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next: <a href="0004-permission-filtered-retrieval.html"><strong>Lesson 4, permission-filtered retrieval</strong></a> (Stage 4). The agent stops listing rows and starts searching documents, and the search has to respect the same permissions you just enforced. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>
