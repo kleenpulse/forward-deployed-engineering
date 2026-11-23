@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 5 · MCP and legacy integration</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0004-permission-filtered-retrieval.html">← Lesson 4</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 5 · Stage 5 · about 60 minutes</p>
+<h1>MCP and legacy integration</h1>
+<p class="subtitle">The agent needs data from a system that is older than the agent, the model and most of the team. You can't change that system. This lesson turns it into an MCP tool that speaks the protocol exactly, gives the model clean answers and useful errors, and treats the old system gently.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>An MCP server written by hand, with no SDK, that a real MCP client could start. It wraps a SOAP order system from 2009: it translates the XML and the status codes into clean fields, turns faults into errors the model can act on, waits when the rate limit says wait, gives up after three tries, and keeps its API key out of every log. You'll also be able to say, for any failure, whether to retry it or not, and why.</p>
+</div>
+
+<h2>1 · Half the job is plumbing</h2>
+
+<p>Integration work shows up in 32% of FDE job ads. Reducto's ad asks for "MCP servers, sub-agents, and agent skills" in production.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry, "I analyzed 1,000 forward deployed engineer jobs"</a>. See also <a href="0001-the-real-job-behind-the-roadmap.html">Lesson 1</a>.</span> Gergely Orosz read a Google Cloud FDE ad and put the split at about 50% integration and plumbing, 25% coding, and 25% meetings.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://blog.pragmaticengineer.com/the-pulse-forward-deployed-engineering-heats-up-again/">The Pragmatic Engineer, "Forward deployed engineering heats up again"</a>.</span></p>
+
+<p>Here is the job for today. Acme's support agent must answer "where is my order?". The orders live in a SOAP service from 2009. Its documentation is a PDF manual. An API gateway in front of it checks an API key and allows 3 requests per second. Nobody will change it for you. Your job is the adapter between this legacy system and the agent.</p>
+
+<p>The adapter will be an MCP server. MCP is the standard way to give agents tools, so one server works in any MCP client. In production you would probably use an official SDK.<span class="sn-ref"></span><span class="sidenote numbered">The SDKs are listed at <a href="https://modelcontextprotocol.io/docs/sdk">modelcontextprotocol.io/docs/sdk</a>.</span> You'll write this one by hand anyway, because at a customer site you debug the wire: a client that won't connect, a tool that never appears, a reply that never arrives. If you know the messages, you can read what went wrong.</p>
+
+<h2>2 · MCP in one page</h2>
+
+<p>Every MCP message is JSON-RPC 2.0. There are three kinds:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic">MCP specification 2026-07-28, "Overview"</a>, sections "Messages" and "Error Codes". The error codes come from the <a href="https://www.jsonrpc.org/specification">JSON-RPC 2.0 specification</a>.</span></p>
+<ul>
+  <li><strong>Request:</strong> <code>id</code>, <code>method</code> and <code>params</code>. The id "MUST NOT be <code>null</code>", and must not repeat an id that is still waiting for its answer.</li>
+  <li><strong>Response:</strong> the same <code>id</code>, plus either a <code>result</code> or an <code>error</code> with an integer <code>code</code> and a <code>message</code>. Every result carries a <code>resultType</code>; an ordinary one is <code>"complete"</code>.</li>
+  <li><strong>Notification:</strong> a method with no <code>id</code>. "The receiver MUST NOT send a response."</li>
+</ul>
+
+<p>The error codes you need today: <code>-32700</code> parse error, <code>-32601</code> method not found, <code>-32602</code> invalid params, <code>-32603</code> internal error, and one that MCP defines itself, <code>-32022</code> unsupported protocol version.</p>
+
+<p><strong>MCP is stateless.</strong> "All the information needed to process a request is contained in the request itself." So every request carries a <code>_meta</code> object with two required fields: the protocol version (<code>io.modelcontextprotocol/protocolVersion</code>) and the client's capabilities (<code>io.modelcontextprotocol/clientCapabilities</code>). "A request missing any required field is malformed": the server answers <code>-32602</code>. If the server doesn't speak the requested version, it answers <code>-32022</code> and lists the versions it does speak, and the client retries with one of them.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning">MCP 2026-07-28, "Versioning and Compatibility"</a>. Servers "MUST implement" <code>server/discover</code>, which returns the supported versions, capabilities and server name in one call. Clients may call it first, but don't have to.</span> Here is one tool call on the wire:</p>
+
+<figure class="code"><figcaption>client → server, one line on stdin (wrapped here to fit)</figcaption><pre><code>{"jsonrpc":"2.0","id":7,"method":"tools/call",
+ "params":{"name":"get_order","arguments":{"order_id":"A-1001"},
+  "_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",
+           "io.modelcontextprotocol/clientCapabilities":{}}}}</code></pre></figure>
+
+<figure class="code"><figcaption>server → client, one line on stdout</figcaption><pre><code>{"jsonrpc":"2.0","id":7,"result":{"resultType":"complete",
+ "content":[{"type":"text","text":"{\"order_id\":\"A-1001\",\"status\":\"shipped\",…}"}],
+ "structuredContent":{"order_id":"A-1001","status":"shipped","customer":"Brightwater Bikes",
+                      "total":1299,"currency":"EUR"},
+ "isError":false}}</code></pre></figure>
+
+<div class="callout">
+  <p><strong>Learned MCP before July 2026?</strong> The 2026-07-28 revision removed the <code>initialize</code> handshake and protocol-level sessions. The version and capabilities now travel on every request instead, and <code>server/discover</code> is new.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/changelog">MCP 2026-07-28, "Key Changes"</a>, major changes 1 to 3 and 8.</span> Older clients and servers still exist. The spec calls them "legacy", and a server "MAY" support both eras. At a customer, the first thing to check when a client won't talk to your server is which revision each side speaks.</p>
+</div>
+
+<h2>3 · stdio: one rule breaks most first servers</h2>
+
+<p>A local MCP server uses the stdio transport. "The client launches the MCP server as a subprocess." The rules that matter:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio">MCP 2026-07-28, "stdio"</a>, sections on messages, shutdown and unexpected termination.</span></p>
+<ul>
+  <li>Messages go one per line, and "MUST NOT contain embedded newlines".</li>
+  <li>"The server MUST NOT write anything to its <code>stdout</code> that is not a valid MCP message."</li>
+  <li>The server "MAY write UTF-8 strings to <code>stderr</code> for any logging purposes".</li>
+  <li>The client shuts the server down by closing its input. "Servers SHOULD exit promptly when their standard input is closed."</li>
+  <li>If the server crashes, the client "SHOULD restart it". Because the protocol is stateless, requests in flight "are simply lost and the client can retry them against the fresh process".</li>
+</ul>
+
+<p>The rule that bites is the second one. In Node and Bun, <code>console.log</code> writes to stdout. One debug line in the middle of the stream, and the client reads a line that isn't JSON-RPC. Depending on the client, you get a parse error, a dropped connection, or a tool that silently never answers. Log with <code>console.error</code>, which writes to stderr.</p>
+
+<p><strong>Credentials come from the environment.</strong> <a href="0003-enterprise-identity-for-agents.html">Lesson 3</a> showed that a stdio server "SHOULD NOT follow" MCP's OAuth authorization spec, and should "retrieve credentials from the environment" instead.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic">MCP 2026-07-28, "Overview"</a>, section "Auth".</span> So the API key arrives as an environment variable, set by whoever configured the server. Ask the Lesson 3 question: whose key is it? It is usually a service account. The key goes into one place, the request header. It never goes into a tool argument, a tool result or a log line.</p>
+
+<h2>4 · Design the tool for the model, not for the API</h2>
+
+<p><code>tools/list</code> returns each tool's <code>name</code>, a <code>description</code> and an <code>inputSchema</code>, a JSON Schema for the arguments. A <code>tools/call</code> result holds <code>content</code> (text, for the model) and, optionally, <code>structuredContent</code> (JSON, for code). "A tool that returns structured content SHOULD also return the serialized JSON in a TextContent block."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">MCP 2026-07-28, "Tools"</a>, sections "Tool", "Tool Result" and "Structured Content". List results also carry <code>ttlMs</code> and <code>cacheScope</code>, so clients know how long they may cache the list.</span></p>
+
+<p>The tempting design is to wrap each endpoint as it is and pass its reply straight through. Anthropic's guide to writing tools warns against exactly that: "tools that merely wrap existing software functionality or API endpoints". It gives three rules that matter here:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/engineering/writing-tools-for-agents">Anthropic, "Writing effective tools for agents"</a>, sections "Choosing the right tools for agents", "Returning meaningful context from your tools" and "Prompt-engineering your tool descriptions".</span></p>
+<ul>
+  <li><strong>Return meaning, not codes.</strong> Return "only high signal information" and avoid "low-level technical identifiers". Agents handle "natural language names, terms, or identifiers significantly more successfully" than cryptic ones. <code>SHPD</code> means nothing to a model. <code>shipped</code> does.</li>
+  <li><strong>Describe it like you would to a new hire.</strong> Make implicit knowledge explicit: formats, terms, what the tool can't do.</li>
+  <li><strong>Name arguments clearly.</strong> "Instead of a parameter named <code>user</code>, try a parameter named <code>user_id</code>."</li>
+</ul>
+
+<table>
+  <thead><tr><th>The legacy system says</th><th>The tool returns</th><th>Why</th></tr></thead>
+  <tbody>
+    <tr><td><code>&lt;m:StatusCd&gt;SHPD&lt;/m:StatusCd&gt;</code></td><td><code>"status": "shipped"</code></td><td>A word from the vendor's code table, not the code</td></tr>
+    <tr><td><code>&lt;m:TotAmtCents&gt;129900&lt;/m:TotAmtCents&gt;</code></td><td><code>"total": 1299</code></td><td>A number, in the unit a person would say</td></tr>
+    <tr><td><code>&lt;m:CustNm&gt;</code>, <code>&lt;m:CurrCd&gt;</code></td><td><code>"customer"</code>, <code>"currency"</code></td><td>Field names the model can read without the manual</td></tr>
+    <tr><td>A whole SOAP envelope</td><td>Nothing of it</td><td>Raw XML costs tokens and teaches the model nothing</td></tr>
+  </tbody>
+</table>
+
+<h2>5 · Two kinds of error</h2>
+
+<p>The MCP tools spec splits errors in two, and the split decides who can fix the problem:</p>
+
+<table>
+  <thead><tr><th></th><th>Protocol error</th><th>Tool execution error</th></tr></thead>
+  <tbody>
+    <tr><td>What it means</td><td>The request itself is broken</td><td>The request was fine, but the tool run failed</td></tr>
+    <tr><td>Examples in the spec</td><td>"Unknown tool", malformed requests, server errors</td><td>"API failures", "Input validation errors", "Business logic errors"</td></tr>
+    <tr><td>On the wire</td><td>A JSON-RPC <code>error</code>, e.g. <code>-32602</code></td><td>A normal <code>result</code> with <code>isError: true</code></td></tr>
+    <tr><td>Who sees it</td><td>Clients "MAY" pass it to the model</td><td>Clients "SHOULD" pass it to the model "to enable self-correction"</td></tr>
+  </tbody>
+</table>
+
+<p>So a tool execution error is a message <em>to the model</em>. Write it so the model can act on it. Anthropic's guide asks for "specific and actionable improvements, rather than opaque error codes or tracebacks". Compare <code>soap:Sender m:OrderNotFound</code> with "There is no order A-9999. Check the id with the customer; ids look like A-1001." The spec also says servers "MUST" sanitize tool outputs, so a stack trace or a raw fault doesn't belong in a result either.</p>
+
+<p><strong>Reading SOAP faults.</strong> A SOAP 1.2 fault carries a code, and the two codes you'll meet tell you what to do next:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.w3.org/TR/soap12-part1/#faultcodes">W3C, SOAP 1.2 Part 1, "SOAP Fault Codes"</a>. The HTTP binding sends a Sender fault as HTTP 400 and a Receiver fault as HTTP 500 (<a href="https://www.w3.org/TR/soap12-part2/#tabresstatereccodes">SOAP 1.2 Part 2, Table 20</a>).</span></p>
+<ul>
+  <li><strong>Sender:</strong> "The message was incorrectly formed or did not contain the appropriate information in order to succeed." It is "an indication that the message is not to be resent without change". Return <code>isError</code>, and don't retry.</li>
+  <li><strong>Receiver:</strong> the failure is on their side, for example an upstream system "which did not respond". "The message could succeed if resent at a later point in time." Retry, with a wait.</li>
+</ul>
+
+<h2>6 · Rate limits and retries</h2>
+
+<p><strong>When the system says "later".</strong> HTTP 429 means "the user has sent too many requests in a given amount of time", and the response "MAY include a Retry-After header indicating how long to wait".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.rfc-editor.org/rfc/rfc6585.html#section-4">RFC 6585, section 4, "429 Too Many Requests"</a>.</span> Retry-After is "either an HTTP-date or a number of seconds", and it also comes with 503 to say how long a service "is expected to be unavailable".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3">RFC 9110, section 10.2.3, "Retry-After"</a>.</span> When the header is there, wait at least that long. When it isn't (a Receiver fault, a dropped connection), wait longer after each attempt.</p>
+
+<p>Amazon's guide to retries gives the rest of the recipe:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/">Amazon Builders' Library, "Timeouts, retries, and backoff with jitter"</a>.</span></p>
+<ul>
+  <li><strong>Capped exponential backoff:</strong> the wait grows "exponentially after every attempt", up to a maximum.</li>
+  <li><strong>Limit the attempts.</strong> Their example: a call that passes through five layers, each retrying three times, can multiply the load on a failing database by 243. Retry in one layer, and give up early.</li>
+  <li><strong>Jitter:</strong> "If all the failed calls back off to the same time, they cause contention or overload again when they are retried." Add a little randomness.</li>
+</ul>
+
+<p><strong>Which calls are safe to retry?</strong> A call is idempotent when "the intended effect on the server of multiple identical requests" is the same as the effect of one.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-9.2.2">RFC 9110, section 9.2.2, "Idempotent Methods"</a>.</span> Amazon's rule: "APIs with side effects aren't safe to retry unless they provide idempotency." Here SOAP sets a trap. Its HTTP binding sends every operation that isn't a simple read as a POST, so the HTTP verb tells you nothing about safety.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.w3.org/TR/soap12-part2/#RPCResourceRetrieval">SOAP 1.2 Part 2, section 4.1.2</a>: when "the operation to be performed is not a retrieval", the web method "is set to "POST"".</span> Read the manual for each operation. <code>GetOrder</code> only reads, so retrying it is safe. A <code>CreateReturn</code> that timed out may have happened anyway. Don't repeat it unless the system accepts an idempotency key; look it up first instead.</p>
+
+<p><strong>Protect the old system from the model.</strong> An agent in a loop can call a tool many times a minute. The tools spec says servers "MUST" rate limit tool invocations, and clients "SHOULD" implement timeouts for tool calls. So keep your waits short. If Retry-After asks for an hour, don't block the agent for an hour: return <code>isError</code> and say when to try again.</p>
+
+<h2>7 · When there is no API at all</h2>
+
+<p>Some systems only have screens. The roadmap's fallback for these is a headless browser: code that drives a real browser with no window, such as Playwright with Chromium's headless mode.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://playwright.dev/docs/browsers">Playwright docs, "Browsers"</a>, sections on Chromium's headless shell and new headless mode.</span> Treat it as the last resort. It breaks when someone moves a button, it is slow, and it usually signs in as a real user, so the Lesson 3 questions about whose account it is come back.</p>
+
+<p>Keep the same tool contract on top of it. The model calls <code>get_order</code> and never learns that a browser sits underneath. If a task needs several steps in one browser, MCP has no session to keep it in. The tools spec suggests returning "an explicit handle" from a first tool and passing it to the next calls, and it names "an open browser context" as an example. It also warns that "a handle is a name, not a capability": check the caller's permission on every call.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">MCP 2026-07-28, "Tools"</a>, section "Stateful Tools".</span></p>
+
+<h2>8 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0005-mcp/</code>. <code>harness.ts</code> runs the fake order system (SOAP 1.2, an API key, 3 requests per second) and plays the MCP client. When you run <code>start.ts</code>, the harness starts that same file again with <code>serve</code> as a subprocess, speaks JSON-RPC to it over stdin and stdout, and checks seven things. <code>start.ts</code> already has the stdio loop and a working <code>server/discover</code> and <code>tools/list</code>. Its tool is the naive version:</p>
+
+<figure class="code"><figcaption>exercises/0005-mcp/start.ts · the deliberately naive tool</figcaption><pre><code>async function callTool(params: any): Promise&lt;Reply&gt; {
+  if (params?.name !== "get_order") throw new Error(`no such tool ${params?.name}`);
+  const headers = { "content-type": "application/soap+xml; charset=utf-8", "x-api-key": LEGACY_API_KEY };
+  console.log("[debug] calling legacy", LEGACY_URL, headers);
+  const res = await fetch(LEGACY_URL, {
+    method: "POST",
+    headers,
+    body: soapRequest("GetOrder", { OrderId: String(params.arguments?.order_id) }),
+  });
+  <span class="c">// Whatever came back, XML, a fault or a 429, goes straight to the model.</span>
+  return { result: { resultType: "complete", content: [{ type: "text", text: await res.text() }], isError: false } };
+}</code></pre></figure>
+
+<p>It works in a demo. Run it and watch it fail every check:</p>
+
+<figure class="code"><figcaption>bun exercises/0005-mcp/start.ts</figcaption><pre><code>FAIL  stdout carries only JSON-RPC
+      40 line(s) on stdout are not JSON-RPC, e.g. "[debug] calling legacy http://127.0.0.1:63740/OrderService {"
+FAIL  Checks the version on every request
+      discover -&gt; ok; no _meta -&gt; a normal result (want -32602); version 1900-01-01 -&gt; a normal result (want -32022)
+FAIL  Translates the legacy reply
+      get_order A-1001 -&gt; structuredContent null; text "&lt;?xml version="1.0" encoding="utf-8"?&gt; &lt;env:Envelope xmlns:e"
+      want structuredContent {"order_id":"A-1001","status":"shipped","customer":"Brightwater Bikes","total":1299,"currency":"EUR"} and no XML in the text
+FAIL  Two kinds of error
+      unknown tool -&gt; JSON-RPC error -32603 (want -32602)
+      order A-9999 -&gt; result: "&lt;?xml version="1.0" encoding="utf-8"?&gt; &lt;env:Envelope xmlns:env="http:/" (want isError naming A-9999, no XML)
+      order "1001" -&gt; result: "&lt;?xml version="1.0" encoding="utf-8"?&gt; &lt;env:Envelope xmlns:env="http:/" (want isError showing what an id looks like)
+FAIL  Waits when the legacy system says later
+      5 calls at once -&gt; 3 served by the legacy system, 2 told to wait, 0 retried too early (want 5 served, 0 early)
+      A-1004 with one Receiver fault -&gt; result: "&lt;?xml version="1.0" encoding="utf-8"?&gt; &lt;env:Envelope xmlns:env="http:/" (want answered)
+FAIL  Gives up after 3 tries
+      legacy system down -&gt; result: "Service Unavailable: scheduled maintenance" after 1 try, 0 too early (want isError within 3 tries, 0 early)
+FAIL  The API key stays secret
+      the key appeared in: stdout
+
+0/7 checks pass.</code></pre></figure>
+
+<p>Look at the first and last lines together. One debug line broke the protocol <em>and</em> leaked the API key, because it printed the headers to stdout. In a real client, that stdout may end up in a log file that more people can read than the key's owner intended.</p>
+
+<p>Now fix <code>start.ts</code>. The TODO list in the file follows the order of the checks. Give yourself 30 minutes before you open the solution.</p>
+<ol>
+  <li>Log to stderr, never stdout.</li>
+  <li>In <code>handle()</code>, check <code>_meta</code> before anything else: <code>-32602</code> if the version or capabilities are missing, <code>-32022</code> with <code>data.supported</code> if the version is one you don't speak.</li>
+  <li>Translate the reply with <code>pick()</code> and <code>STATUS_CODES</code> into <code>structuredContent</code>, and return the same JSON as text.</li>
+  <li>Unknown tool: <code>-32602</code>. Bad id format or a missing order: <code>isError: true</code> with one sentence the model can act on.</li>
+  <li>On 429, 503 or a Receiver fault, wait and retry: Retry-After when present, otherwise doubling backoff, plus jitter.</li>
+  <li>Stop after 3 attempts in total, and say to try later.</li>
+  <li>Send the key only in the <code>X-Api-Key</code> header.</li>
+</ol>
+
+<p>Stuck on check 5 with "retried too early"? You're probably retrying on a fixed short delay. Read the Retry-After header and wait at least that many seconds.</p>
+
+<p>The solution's two key pieces are the version check at the top of <code>handle()</code> and the retry loop:</p>
+
+<figure class="code"><figcaption>exercises/0005-mcp/solution.ts · first lines of handle()</figcaption><pre><code><span class="c">// MCP is stateless: every request says which protocol version it speaks. Check it every time.</span>
+const meta = msg.params?._meta;
+const version = meta?.["io.modelcontextprotocol/protocolVersion"];
+if (typeof version !== "string" || typeof meta?.["io.modelcontextprotocol/clientCapabilities"] !== "object")
+  return { error: { code: -32602, message: "Invalid params: _meta needs io.modelcontextprotocol/protocolVersion and clientCapabilities" } };
+if (version !== PROTOCOL_VERSION)
+  return { error: { code: -32022, message: "Unsupported protocol version", data: { supported: [PROTOCOL_VERSION], requested: version } } };</code></pre></figure>
+
+<figure class="code"><figcaption>exercises/0005-mcp/solution.ts · inside callLegacy(), after each response</figcaption><pre><code>if (status === 200) return { kind: "ok", xml: body };
+const fault = parseFault(body);
+<span class="c">// Sender faults and other 4xx: the request itself is wrong. Sending it again won't help.</span>
+const mayWorkLater = status === 0 || status === 429 || status === 503 || fault?.code === "Receiver";
+if (!mayWorkLater) return fault ? { kind: "fault", fault } : { kind: "unavailable", why: `HTTP ${status}` };
+
+const wait = waitMs(retryAfter, attempt);
+if (attempt &gt;= MAX_ATTEMPTS || wait &gt; MAX_WAIT_MS)
+  return { kind: "unavailable", why: `${status ? `HTTP ${status}` : "no response"} after ${attempt} tries` };
+await Bun.sleep(wait);</code></pre></figure>
+
+<figure class="code"><figcaption>exercises/0005-mcp/solution.ts · waitMs()</figcaption><pre><code><span class="c">// Retry-After wins when the system sends it (seconds, or an HTTP date). Otherwise use capped</span>
+<span class="c">// exponential backoff. Either way, add jitter so parallel callers don't all return at once.</span>
+function waitMs(retryAfter: string | null, attempt: number): number {
+  const jitter = Math.random() * 250;
+  if (retryAfter &amp;&amp; /^\d+$/.test(retryAfter)) return Number(retryAfter) * 1000 + jitter;
+  const date = retryAfter ? Date.parse(retryAfter) : NaN;
+  if (!Number.isNaN(date)) return Math.max(0, date - Date.now()) + jitter;
+  return Math.min(250 * 2 ** (attempt - 1), 4_000) + jitter;
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0005-mcp/solution.ts</figcaption><pre><code>PASS  stdout carries only JSON-RPC
+      every line on stdout parsed as a JSON-RPC message
+PASS  Checks the version on every request
+      discover -&gt; ok; no _meta -&gt; JSON-RPC error -32602 (want -32602); version 1900-01-01 -&gt; JSON-RPC error -32022 with supported: ["2026-07-28"] (want -32022)
+PASS  Translates the legacy reply
+      get_order A-1001 -&gt; {"order_id":"A-1001","status":"shipped","customer":"Brightwater Bikes","total":1299,"currency":"EUR"}
+PASS  Two kinds of error
+      unknown tool -&gt; JSON-RPC error -32602 (want -32602)
+      order A-9999 -&gt; isError: "There is no order A-9999 in the order system. Check the id with the cu" (want isError naming A-9999, no XML)
+      order "1001" -&gt; isError: ""1001" is not an order id. Order ids look like A-1001." (want isError showing what an id looks like)
+PASS  Waits when the legacy system says later
+      5 calls at once -&gt; 5 served by the legacy system, 2 told to wait, 0 retried too early (want 5 served, 0 early)
+      A-1004 with one Receiver fault -&gt; answered after 2 tries (want answered)
+PASS  Gives up after 3 tries
+      legacy system down -&gt; isError: "The order system is busy or down (HTTP 503 after 3 tries). Nothing was" after 3 tries, 0 too early (want isError within 3 tries, 0 early)
+PASS  The API key stays secret
+      the key reached the legacy system and appeared nowhere else
+
+7/7 checks pass.</code></pre></figure>
+
+<p>Two details in the solution are worth stealing. The "down" message says "Nothing was changed", which is true for a read and tells the model it is safe to try again later. And the stdio loop doesn't wait for one request before reading the next, so five tool calls can wait for the rate limit side by side.</p>
+
+<h2>9 · Retry, report, or reject?</h2>
+
+<p>Each card is something your server might see. Decide what it should do: wait and retry, return a tool execution error (<code>isError</code>) without retrying, or answer with a JSON-RPC protocol error.</p>
+
+<script type="application/json" data-sort="l5-errors">
+{
+  "buckets": ["Wait and retry", "isError, no retry", "Protocol error"],
+  "items": [
+    { "label": "GetOrder gets HTTP 429 with Retry-After: 2", "detail": "First attempt.", "bucket": 0,
+      "why": "429 means too many requests, and Retry-After says how long to wait (<a href=\"https://www.rfc-editor.org/rfc/rfc6585.html#section-4\">RFC 6585</a>). GetOrder only reads, so repeating it is safe. Wait at least 2 seconds, plus jitter." },
+    { "label": "A Sender fault with subcode OrderNotFound", "detail": "The id was well formed.", "bucket": 1,
+      "why": "A Sender fault means the message \"is not to be resent without change\" (<a href=\"https://www.w3.org/TR/soap12-part1/#faultcodes\">SOAP 1.2</a>). Tell the model the order doesn't exist and what a valid id looks like." },
+    { "label": "tools/call names a tool your server doesn't have", "detail": "The model asked for delete_order.", "bucket": 2,
+      "why": "\"Unknown tool\" is the spec's first example of a protocol error, answered as a JSON-RPC error such as -32602 (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/server/tools\">MCP Tools</a>)." },
+    { "label": "A Receiver fault: \"Warehouse system did not respond\"", "detail": "On GetOrder.", "bucket": 0,
+      "why": "A Receiver fault \"could succeed if resent at a later point in time\" (<a href=\"https://www.w3.org/TR/soap12-part1/#faultcodes\">SOAP 1.2</a>). There is no Retry-After, so use backoff with jitter, and cap the attempts." },
+    { "label": "A request arrives with no _meta at all", "detail": "No protocol version, no capabilities.", "bucket": 2,
+      "why": "\"A request missing any required field is malformed; the server MUST reject it with JSON-RPC error code -32602\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic\">MCP Overview</a>)." },
+    { "label": "CreateReturn times out with no response", "detail": "It changes data. The system has no idempotency key.", "bucket": 1,
+      "why": "The return may have been created anyway. \"APIs with side effects aren't safe to retry unless they provide idempotency\" (<a href=\"https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/\">Amazon</a>). Report it, and check whether the return exists before anyone tries again." },
+    { "label": "HTTP 503 with Retry-After: 7200", "detail": "Scheduled maintenance.", "bucket": 1,
+      "why": "Two hours is far longer than an agent can wait inside one tool call; clients \"SHOULD\" time out tool calls (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/server/tools\">MCP Tools</a>). Return isError and say when the system expects to be back." },
+    { "label": "A Sender fault: \"Missing or wrong X-Api-Key header\"", "detail": "Every call fails the same way.", "bucket": 1,
+      "why": "Resending the same key won't help: it's a Sender fault. The model can't fix it either, so say the connection to the order system is misconfigured, and log it on stderr for whoever runs the server. Never put the key in the message." },
+    { "label": "A request asks for protocol version 1900-01-01", "detail": "Your server speaks only 2026-07-28.", "bucket": 2,
+      "why": "The server \"MUST respond with an UnsupportedProtocolVersionError\" (-32022) listing the versions it supports, so the client can retry with one (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning\">MCP Versioning</a>)." },
+    { "label": "get_order is called with order_id \"1001\"", "detail": "The real format is A-1001.", "bucket": 1,
+      "why": "The spec lists \"Input validation errors\" as tool execution errors, because the model can fix them (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/server/tools\">MCP Tools</a>). Say what a valid id looks like." }
+  ]
+}
+</script>
+
+<h2>10 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l5-recall">
+{
+  "questions": [
+    { "q": "Under the 2026-07-28 spec, how does an MCP server learn which protocol version a request uses?",
+      "options": ["From an initialize handshake at the start", "From the _meta object on each request", "From the clientInfo name and version string", "From the first tools/list on the connection"],
+      "answer": 1,
+      "why": "MCP is stateless: \"Every request declares the protocol version it is using in its _meta field.\" The initialize handshake was removed in this revision (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic/versioning\">MCP Versioning</a>). clientInfo is self-reported and only for display and logs." },
+    { "q": "Your stdio server prints a debug line with console.log. What goes wrong?",
+      "options": ["The client sees a line that isn't JSON-RPC", "The line is lost when the process exits", "The client restarts the server process right away", "The tool is removed from the tool list"],
+      "answer": 0,
+      "why": "console.log writes to stdout, and \"the server MUST NOT write anything to its stdout that is not a valid MCP message\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio\">MCP stdio</a>). Log to stderr with console.error." },
+    { "q": "The legacy system answers with a SOAP Sender fault. What does that tell you?",
+      "options": ["An upstream system on their side failed", "Your message was wrong; don't resend unchanged", "The service is busy, so try again", "The SOAP version is not supported here"],
+      "answer": 1,
+      "why": "Sender: \"The message was incorrectly formed or did not contain the appropriate information\", and it \"is not to be resent without change\". A Receiver fault is the one that may succeed later (<a href=\"https://www.w3.org/TR/soap12-part1/#faultcodes\">SOAP 1.2</a>)." },
+    { "q": "A GetOrder call gets HTTP 429 with Retry-After: 1. What should your server do next?",
+      "options": ["Retry at once, then double the wait", "Return the 429 body to the model", "Wait at least one second, then retry", "Stop calling the system for an hour"],
+      "answer": 2,
+      "why": "Retry-After says how long to wait (<a href=\"https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3\">RFC 9110</a>). GetOrder only reads, so a retry is safe. Add jitter so parallel calls don't all come back at once, and cap the attempts (<a href=\"https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/\">Amazon</a>)." },
+    { "q": "Why doesn't the HTTP method help you decide whether a SOAP call is safe to retry?",
+      "options": ["SOAP has a retry header", "SOAP always retries by itself", "SOAP methods are idempotent anyway", "SOAP sends non-reads as POST"],
+      "answer": 3,
+      "why": "When \"the operation to be performed is not a retrieval\", SOAP's HTTP binding uses POST (<a href=\"https://www.w3.org/TR/soap12-part2/#RPCResourceRetrieval\">SOAP 1.2 Part 2</a>). So a harmless lookup and a refund look the same on the wire. Read the manual per operation." },
+    { "q": "Amazon's example of five layers, each retrying three times, shows what?",
+      "options": ["Jitter is needed only in deep layers", "Retries multiply load on the failing system", "Five layers are needed for reliable systems", "Three retries per layer is the rule"],
+      "answer": 1,
+      "why": "If each layer retries independently, the load on the database \"will increase 243x, making it unlikely to ever recover\" (<a href=\"https://aws.amazon.com/builders-library/timeouts-retries-and-backoff-with-jitter/\">Amazon Builders' Library</a>). Retry in one layer, with a cap." },
+    { "q": "From Lesson 3: where should a local stdio MCP server get the legacy system's API key?",
+      "options": ["From the user's OAuth access token", "From an argument the model passes", "From the environment it started with", "From metadata in the server/discover reply"],
+      "answer": 2,
+      "why": "Stdio servers \"SHOULD NOT\" use MCP's OAuth flow and should \"retrieve credentials from the environment\" (<a href=\"https://modelcontextprotocol.io/specification/2026-07-28/basic\">MCP Overview, Auth</a>). Forwarding the user's token would be token passthrough, which Lesson 3 showed is forbidden." },
+    { "q": "From Lesson 4: a support agent asks about order A-1003, which belongs to another customer. What should the tool say?",
+      "options": ["That it belongs to a different customer", "The order details, clearly marked as restricted", "That the user must ask an administrator", "The same as for a missing order"],
+      "answer": 3,
+      "why": "Saying it belongs to someone else confirms it exists, which is itself a leak. Lesson 4's rule for abstaining applies to tool errors too: don't hint at what's behind the wall." }
+  ]
+}
+</script>
+
+<h2>11 · Write the next tool</h2>
+
+<p>Acme is happy with <code>get_order</code>. Now they want the agent to start returns, through the order system's <code>CreateReturn</code> operation. It changes data, and it has no idempotency key. Write what the model will read for this tool. It saves as you type.</p>
+
+<script type="application/json" data-practice="l5-next-tool">
+{
+  "title": "A create_return tool for the agent",
+  "maxWords": 180,
+  "fields": [
+    { "key": "description", "label": "Name and description", "hint": "What it does, what it returns, when not to use it. Write it for a new hire." },
+    { "key": "args", "label": "Arguments", "hint": "Each argument's name, format and an example." },
+    { "key": "errors", "label": "Errors the model may see", "hint": "Two or three isError messages, each telling the model what to do next." },
+    { "key": "retry", "label": "Retry rule", "hint": "What your server does when CreateReturn times out." }
+  ],
+  "checks": [
+    "The description says it changes data and that the user should confirm before it runs",
+    "Arguments have clear names (order_id, not id) and show the format with an example",
+    "Each error message tells the model a next step, not just what failed",
+    "A missing order and someone else's order get the same message",
+    "The retry rule never repeats CreateReturn blindly after a timeout; it checks first",
+    "Nothing the model reads mentions the API key, SOAP, XML or status codes like SHPD",
+    "180 words or fewer"
+  ]
+}
+</script>
+
+<p>The MCP spec backs the first check: clients "SHOULD" prompt for user confirmation on sensitive operations. Lesson 7 (planned) is about building that approval step properly.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 15 minutes</p>
+  <p><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">The "Tools" page of the MCP specification (2026-07-28)</a>. It is short, and it is the contract your server keeps. Read "Calling Tools", "Error Handling", "Stateful Tools" and "Security Considerations" closely. Then read the <a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio">stdio transport page</a>, which takes five minutes. If you have 15 more, read Anthropic's <a href="https://www.anthropic.com/engineering/writing-tools-for-agents">"Writing effective tools for agents"</a>, which is about the part the spec leaves to you: what makes a tool easy for a model to use.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next (planned): <strong>Lesson 6, legacy data and ETL</strong> (Stage 3). The same order system, but this time you get its data as two exports that disagree, and you have to work out which numbers are true. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

@@ -16,7 +16,7 @@ The course follows the 12 stages of [Suraj Sharma's FDE roadmap](https://x.com/s
 | 2 | Discovery and scoping | 11 | ✅ |
 | 3 | Enterprise identity for agents | 1 | ✅ |
 | 4 | Permission-filtered retrieval | 4 | ✅ |
-| 5 | MCP and legacy integration | 5 | coming soon |
+| 5 | MCP and legacy integration | 5 | ✅ |
 | 6 | Legacy data and ETL | 3 | coming soon |
 | 7 | Human-in-the-loop and durable workflows | 7 | coming soon |
 | 8 | Evals on customer data | 10 | coming soon |
