@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 12 · Air-gapped and VPC deployment</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0011-pii-guardrails.html">← Lesson 11</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 12 · Stage 2 (specialist) · about 60 minutes</p>
+<h1>Air-gapped and VPC deployment</h1>
+<p class="subtitle">Your company's next customer is Torvik, which builds sonar parts for navies. Torvik wants the same agent Acme has. But its engineering network has no route to the internet: no model provider, no package downloads, no way for you to log in from your desk. Every release arrives on a disk that Ingrid, Torvik's security officer, carries across by hand. This lesson is what changes when the whole agent has to live inside someone else's walls.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>An import gate, in TypeScript and Postgres, that decides whether a release bundle carried across the gap gets installed: a signature checked against a key pinned on the inside, every file hashed, nothing unlisted, never an older version, no setting that points outside, the database migration and the version switch in one transaction, and a log the accreditor can read. Then the one-page network and release plan Torvik's security team asked for.</p>
+</div>
+
+<h2>1 · Four places the agent can run</h2>
+
+<p>Until now the agent ran in your company's cloud and called a model provider over the internet. <a href="0011-pii-guardrails.html">Lesson 11</a> kept personal data out of those calls. Some customers go further: nothing leaves at all. Job ads show where: in one analysis of 1,000 FDE ads, government and defence made up 18% of the ads that name an industry, with "air-gapped systems, FedRAMP compliance, classified environments" as the norm.<span class="sn-ref"></span><span class="sidenote numbered">Bloomberry, <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">"I analyzed 1,000 forward deployed engineer jobs"</a>. The same figure is in the <a href="../reference/fde-roadmap-map.html">roadmap reference</a>.</span> Banks and hospitals ask for parts of it too. There are four common setups:</p>
+<table>
+  <thead><tr><th>Setup</th><th>Where the model runs</th><th>What leaves the customer's network</th><th>What you can do from your desk</th></tr></thead>
+  <tbody>
+    <tr><td>Your cloud, a provider's API (Acme)</td><td>At the model provider</td><td>Every request, masked</td><td>Everything</td></tr>
+    <tr><td>The customer's VPC, their cloud's model service</td><td>At the cloud provider, reached by a private endpoint</td><td>Nothing over the internet. Read what the cloud keeps.</td><td>What their cloud roles allow</td></tr>
+    <tr><td>The customer's VPC or data centre, their own GPUs</td><td>On their hardware (<a href="#up-next">Lesson 13</a>)</td><td>Nothing, if outbound traffic is denied</td><td>Through their VPN, if they let you</td></tr>
+    <tr><td>Air-gapped</td><td>On their hardware, or in a cloud region built for classified work</td><td>Nothing. Releases come in on media.</td><td>Nothing. Their staff run your runbook.</td></tr>
+  </tbody>
+</table>
+<p>Read the last column again. Each step down the table takes a tool away from you: first the provider's dashboard, then your own logs, then your access. The work moves from "fix it in production" to "make it right before it ships, and write down how they fix it without you".</p>
+
+<h2>2 · A VPC: a private road to the model</h2>
+
+<p>The middle option is the most common one. The customer runs the agent in their own VPC, and calls the model service their cloud sells: Amazon Bedrock on AWS, the model service Google now calls Gemini Enterprise Agent Platform (formerly Vertex AI), or Microsoft Foundry on Azure. The request never touches the public internet. AWS: "You can access Amazon Bedrock as if it were in your VPC, without the use of an <span class="no-terms">internet gateway</span>, NAT device, VPN connection, or Direct Connect connection."<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html">"Use interface VPC endpoints (AWS PrivateLink) to create a private connection between your VPC and Amazon Bedrock"</a>. Also: "Instances in your VPC don't need public IP addresses to access Amazon Bedrock."</span> Google's version lets customers reach the service with "their own internal IP addresses … without leaving their VPC networks".<span class="sn-ref"></span><span class="sidenote numbered">Google Cloud, <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/general/psc-endpoints">"About accessing Gemini Enterprise Agent Platform services through Private Service Connect endpoints"</a>, updated November 2026. The old Vertex AI addresses redirect here.</span> Microsoft's network isolation guide starts from the same need: "Major enterprises require network isolation to secure their resources from unauthorized access, tampering, or leakage of data and models."<span class="sn-ref"></span><span class="sidenote numbered">Microsoft, <a href="https://learn.microsoft.com/en-us/azure/foundry/how-to/configure-private-link">"How to configure network isolation for Microsoft Foundry"</a>.</span></p>
+
+<p>Google adds a second wall. A VPC Service Controls perimeter "can help you mitigate the risk of data exfiltration", and once the service is inside one, "all public internet access to your Agent Platform instance is automatically blocked".<span class="sn-ref"></span><span class="sidenote numbered">Google Cloud, <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/general/vpc-service-controls">"VPC Service Controls with Gemini Enterprise Agent Platform"</a>.</span> A private endpoint is a road in. A perimeter also stops data being copied out to a project outside it.</p>
+
+<p><strong>A private road doesn't tell you who is at the other end.</strong> That is in each service's data terms, and they differ:</p>
+<ul>
+  <li><strong>Bedrock</strong> runs each model in AWS accounts that "Model providers don't have any access to", so "they don't have access to Amazon Bedrock logs or to customer prompts and completions".<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/data-protection.html">"Data protection"</a> (Amazon Bedrock User Guide).</span> Whether AWS keeps prompts is now a setting: "Amazon Bedrock gives you explicit control over whether the prompts and outputs from your inference requests are retained", and where it does, "AWS may retain the data for safety and abuse-prevention purposes. The model provider does not receive it."<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/data-retention.html">"Data retention"</a> (Amazon Bedrock User Guide), checked November 2026.</span></li>
+  <li><strong>Microsoft Foundry</strong>, for the models Azure sells: prompts and completions "are NOT available to OpenAI or other providers of Models sold by Azure".<span class="sn-ref"></span><span class="sidenote numbered">Microsoft, <a href="https://learn.microsoft.com/en-us/azure/foundry/responsible-ai/openai/data-privacy">"Data, privacy, and security for Foundry Models sold by Azure in Microsoft Foundry"</a>.</span> But Claude in Foundry comes in two hosting options, and in one of them inference runs on an "Anthropic-operated service running on Anthropic infrastructure". Even in the Azure-hosted option, "Operational data that contains no prompts or completions is stored on Anthropic's systems outside Azure."<span class="sn-ref"></span><span class="sidenote numbered">Anthropic, <a href="https://platform.claude.com/docs/en/build-with-claude/claude-in-microsoft-foundry">"Claude in Microsoft Foundry"</a>, checked November 2026. Its examples of that operational data: "safety classifier scores, identifiers, and usage and billing data".</span></li>
+</ul>
+<p>So "it's in our Azure" or "it's in our AWS" is where the conversation starts, not where it ends. For each setup, find the page that says where inference runs and what is kept, quote it with the date you read it, and put it in front of the customer's security team. These pages change: Bedrock's retention setting is newer than many of the security reviews that cite Bedrock.</p>
+
+<h2>3 · Default deny, then find what calls out</h2>
+
+<p>A VPC doesn't stop traffic going out by itself. Two defaults catch people:</p>
+<ul>
+  <li><strong>A "private" subnet can still reach the internet.</strong> AWS: "You can use a NAT gateway so that instances in a private subnet can connect to services outside your VPC but external services can't initiate a connection with those instances."<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html">"NAT gateways"</a> (Amazon VPC User Guide).</span> Private means nobody can call in. It says nothing about calling out.</li>
+  <li><strong>Containers may call anywhere.</strong> Kubernetes: "By default, a pod is non-isolated for egress; all outbound connections are allowed."<span class="sn-ref"></span><span class="sidenote numbered">Kubernetes, <a href="https://kubernetes.io/docs/concepts/services-networking/network-policies/#default-deny-all-egress-traffic">"Network Policies"</a>, including "Default deny all egress traffic".</span></li>
+</ul>
+<p>Regulated customers write the fix down as a rule. The US government's catalogue of security controls says: "Deny network communications traffic by default and allow network communications traffic by exception", so that "only those system connections that are essential and approved are allowed".<span class="sn-ref"></span><span class="sidenote numbered">NIST, <a href="https://csrc.nist.gov/projects/cprt/catalog#/cprt/framework/version/SP_800_53_5_1_1/home?element=SC-07">SP 800-53 Rev. 5.1.1</a>, control SC-7(5), "Deny by Default — Allow by Exception", and its discussion. It is in the <span class="no-terms">Moderate and High baselines</span>.</span> Your agent is one more system on the customer's network, so each of its connections needs a place on that approved list.</p>
+<p>In Kubernetes, the starting point is a policy that "selects all pods but does not allow any egress traffic from those pods". Then you add back, one by one, the places the agent may reach: the model server, the CRM, the internal collector for traces. The same page has a catch: "A default deny-all egress policy also blocks DNS traffic." So the first rule you add back is DNS, to the customer's own resolver.</p>
+<figure class="code"><figcaption>The Kubernetes docs' default-deny egress policy</figcaption><pre><code>apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-egress
+spec:
+  podSelector: {}        <span class="c"># every pod in the namespace</span>
+  policyTypes:
+  - Egress               <span class="c"># and no egress rules: nothing may go out</span></code></pre></figure>
+
+<p><strong>Then find what calls out.</strong> Run the agent in a test copy of the customer's network with egress denied, and read what was blocked. On AWS, VPC Flow Logs "capture information about the IP traffic going to and from network interfaces in your VPC".<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://docs.aws.amazon.com/vpc/latest/userguide/flow-logs.html">"Logging IP traffic using VPC Flow Logs"</a>.</span> Every blocked attempt is a default someone chose, and the list is usually longer than the team expects. Two documented examples:</p>
+<ul>
+  <li><strong>Model libraries download at runtime.</strong> Hugging Face Transformers: "When you load a pretrained model with from_pretrained(), the model is downloaded from the Hub and locally cached." Even with the file cached, a download call "still triggers a HTTP request to check that a new version is not available". Set <code>HF_HUB_OFFLINE=1</code>: "If set, no HTTP calls will be made to the Hugging Face Hub."<span class="sn-ref"></span><span class="sidenote numbered">Hugging Face, <a href="https://huggingface.co/docs/transformers/installation#offline-mode">Transformers "Installation", "Offline mode"</a>, and <a href="https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhuboffline">huggingface_hub "Environment variables", HF_HUB_OFFLINE</a>.</span></li>
+  <li><strong>Telemetry goes where its settings say.</strong> OpenTelemetry's default endpoint is local, <code>http://localhost:4318</code> for HTTP.<span class="sn-ref"></span><span class="sidenote numbered">OpenTelemetry, <a href="https://opentelemetry.io/docs/languages/sdk-configuration/otlp-exporter/#otel_exporter_otlp_endpoint">"OTLP Exporter Configuration", OTEL_EXPORTER_OTLP_ENDPOINT</a>.</span> Your own product's defaults are the ones to check: a crash reporter or usage counter that sends to your company's cloud works at Acme, and is a blocked connection, or a leak, at Torvik.</li>
+</ul>
+<p>Fix each one in the build, not with an exception in the firewall: bake the model and every package into the image, point telemetry at the customer's collector, turn update checks off. Write the final list of allowed destinations into the plan, with a reason for each.</p>
+
+<h2>4 · Air-gapped: nothing crosses by itself</h2>
+
+<p>An air gap is stricter than "egress denied". NIST's definition: "An interface between two systems at which (a) they are not connected physically and (b) any logical connection is not automated (i.e., data is transferred through the interface only manually, under human control)."<span class="sn-ref"></span><span class="sidenote numbered">NIST CSRC glossary, <a href="https://csrc.nist.gov/glossary/term/air_gap">"air gap"</a>, from CNSSI 4009 and RFC 4949.</span> Torvik's staff call the connected network the low side and the closed one the high side. Data crosses in two ways. By hand, on approved media, as Ingrid does. Or through a cross domain solution, "a form of controlled interface that provides the ability to manually and/or automatically access and transfer information between different security domains", which is often built on a data diode, a device "that allows data to travel only in one direction".<span class="sn-ref"></span><span class="sidenote numbered">NIST CSRC glossary, <a href="https://csrc.nist.gov/glossary/term/cross_domain_solution">"cross domain solution (CDS)"</a> and <a href="https://csrc.nist.gov/glossary/term/data_diode">"data diode"</a>.</span> One direction means your releases can go in, and the logs don't come back out to you.</p>
+
+<p><strong>Where the model runs.</strong> There is no provider API on the high side. That leaves two options:</p>
+<ul>
+  <li><strong>An open-weight model on the customer's own GPUs.</strong> The weights arrive on the media like any other file. Choosing and serving one is <a href="#up-next">Lesson 13</a>.</li>
+  <li><strong>A cloud built for classified work, if the customer's government accredits one.</strong> In the US, AWS describes its Top Secret Region as "the first air-gapped commercial cloud"; Microsoft offers "dedicated US air-gapped regions" for Secret and Top Secret data; and Google Distributed Cloud air-gapped "is built to remain disconnected in perpetuity", with Gemini generally available on it since August 2025.<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://aws.amazon.com/blogs/publicsector/announcing-the-new-aws-secret-region/">"Announcing the New AWS Secret Region"</a>; Microsoft, <a href="https://azure.microsoft.com/en-us/solutions/government">"Azure for US Government"</a>; Google Cloud, <a href="https://cloud.google.com/distributed-cloud-air-gapped">"Google Distributed Cloud air-gapped"</a> and <a href="https://cloud.google.com/blog/topics/hybrid-cloud/gemini-is-now-available-anywhere">"Run Gemini anywhere"</a> (28 August 2025).</span> Anthropic says its Claude Gov models "are already deployed by agencies at the highest level of U.S. national security", with access "limited to those who operate in such classified environments".<span class="sn-ref"></span><span class="sidenote numbered">Anthropic, <a href="https://www.anthropic.com/news/claude-gov-models-for-u-s-national-security-customers">"Claude Gov models for U.S. national security customers"</a> (6 June 2025). Earlier, Palantir announced Claude <a href="https://investors.palantir.com/news-details/2024/Anthropic-and-Palantir-Partner-to-Bring-Claude-AI-Models-to-AWS-for-U.S.-Government-Intelligence-and-Defense-Operations/">"hosted on Palantir's Impact Level 6 (IL6) accredited environment"</a> (November 2024). IL6 "is reserved for the storage and processing of information classified up to the SECRET level" (<a href="https://learn.microsoft.com/en-us/azure/compliance/offerings/offering-dod-il6">Microsoft Learn</a>).</span> These are US programmes. Torvik is European, so its security team, not you, says which of them, if any, it may use.</li>
+</ul>
+
+<p><strong>What disappears for you.</strong> Everything you did from your desk in Lessons 2 to 11 needs a new answer:</p>
+<table>
+  <thead><tr><th>At Acme</th><th>At Torvik</th></tr></thead>
+  <tbody>
+    <tr><td><code>bun install</code> when the container starts</td><td>Every package, model file and tokenizer is in the container image before it crosses</td></tr>
+    <tr><td>You read traces and logs (<a href="0009-telemetry-and-roi.html">Lesson 9</a>)</td><td>Torvik's staff read them, inside, and tell you what they see. Error messages must make sense read aloud over the phone.</td></tr>
+    <tr><td>You fix it, or roll back, in minutes</td><td>Torvik's on-call follows your runbook (<a href="0010-handoff-and-self-serve.html">Lesson 10</a>). A fix is a new release, on the next disk.</td></tr>
+    <tr><td>A release goes out when CI is green</td><td>A release goes in when Ingrid carries it, and the high side checks it again</td></tr>
+  </tbody>
+</table>
+<p>That last row is today's exercise.</p>
+
+<h2>5 · Carrying a release across</h2>
+
+<p>A disk that arrives on the high side is a download from an untrusted mirror: you know what it should hold, but not what it does. The Update Framework (TUF), a specification for secure software updates, lists the attacks an updater must stop. Four of them map straight onto a disk in Ingrid's hand:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://theupdateframework.github.io/specification/latest/#goals-to-protect-against-specific-attacks">The Update Framework Specification</a>, version 1.0.37, section 1.5.2, "Goals to protect against specific attacks".</span></p>
+<table>
+  <thead><tr><th>TUF's attack</th><th>In its words</th><th>On Ingrid's disk</th></tr></thead>
+  <tbody>
+    <tr><td>Arbitrary installation</td><td>"an attacker cannot provide arbitrary files in response to download requests"</td><td>A release signed by someone else; a script added to the disk after signing</td></tr>
+    <tr><td>Rollback attack</td><td>"An attacker cannot trick clients into installing software that is older than that which the client previously knew to be available."</td><td>Last September's genuine release, found on an old stick</td></tr>
+    <tr><td>Mix-and-match</td><td>"a combination of metadata that never existed together on the repository at the same time"</td><td>This month's image with last month's model file</td></tr>
+    <tr><td>Indefinite freeze</td><td>"the same, outdated metadata without the client being aware of the problem"</td><td>No disk arrives at all, and the high side runs an old version with a known bug</td></tr>
+  </tbody>
+</table>
+
+<p>The first three are stopped by one design. The vendor signs a manifest: a list of every file with its SHA-256 hash and size, plus the version. The high side checks the digital signature, then checks every file against the list, and refuses anything the list doesn't name. Then it compares the version with the one running. The fourth can't be stopped in code: an air gap is a freeze by design. The plan has to say how often releases cross, and how an urgent security fix jumps the queue.</p>
+
+<p><strong>The key is the whole game.</strong> A signature only proves that someone holding a private key signed it. Which key? TUF: "The client-side of the framework MUST ship with trusted root keys", and it assumes "a good, trusted copy of this file was shipped with the package manager or software updater using an out-of-band process".<span class="sn-ref"></span><span class="sidenote numbered">TUF specification, sections <a href="https://theupdateframework.github.io/specification/latest/#root-role">2.1.1 "Root role"</a> and <a href="https://theupdateframework.github.io/specification/latest/#load-trusted-root">5.2 "Load trusted root metadata"</a>.</span> At Torvik, that out-of-band process is the accreditation: the vendor's public key was installed on the high side once, and Ingrid's team compared its fingerprint with the vendor in person. That pinned key is the only one that counts. A key that travels on the same disk as the release proves nothing, because whoever made the disk chose it. And there is no key server to ask: the high side has no network.</p>
+
+<p><strong>A valid signature says who built it, not that it's safe here.</strong> The vendor's own build can still contain a telemetry endpoint pointing at the vendor's cloud, or a database migration that fails. So the gate also checks what the release will do: every URL in its configuration must stay inside Torvik's network, and the migrations and the version switch happen in one transaction, so a failure leaves the old version running untouched.</p>
+
+<p>You won't build this gate from scratch in a real deployment. Zarf, an open-source tool for air gaps, lets you "package the parts of the internet your app needs into a single compressed file to be installed without connectivity", and can "Create and verify package signatures with cosign".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.zarf.dev/">"What is Zarf?"</a>, Zarf documentation.</span> Sigstore's cosign verifies "with an on-disk public key provided by the signer": <code>cosign verify --key cosign.pub</code>.<span class="sn-ref"></span><span class="sidenote numbered">Sigstore, <a href="https://docs.sigstore.dev/cosign/verifying/verify/">"Verifying Signatures"</a>.</span> But you have to know what such a tool checks, because Torvik's accreditor will ask you, and some customers will want their own checks on top. Building one is the fastest way to know.</p>
+
+<h2>6 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0012-air-gap/</code>. The top of <code>harness.ts</code> describes a bundle, the key pinned on the high side, the <code>deployment</code> and <code>schema_migrations</code> tables, and the <code>import_log</code>. The harness writes nine bundles to <code>exercises/0012-air-gap/media/</code> on every run, one for each disk Ingrid carries across in December. Open a few before you start. You write one function: <code>importBundle(dir)</code>.</p>
+
+<p><code>start.ts</code> is the import script most teams write first. It checks a signature, so it feels safe:</p>
+
+<figure class="code"><figcaption>exercises/0012-air-gap/start.ts · importBundle()</figcaption><pre><code><span class="c">// Fetch the vendor's current key, so key rotation "just works". Offline? Use the copy in the bundle.</span>
+let key: string;
+try {
+  key = await (await fetch("https://releases.vendor.example/signing-key.pub")).text();
+} catch {
+  key = await Bun.file(join(dir, "signing-key.pub")).text();
+}
+if (!verifySignature(key, manifestBytes, signature)) return { ok: false, error: "Bad signature." };
+
+const manifest: Manifest = JSON.parse(new TextDecoder().decode(manifestBytes));
+await db.query("update deployment set version = $1, … where id = 1", [manifest.version, …]);
+<span class="c">// … then apply the migrations we don't have yet, one by one</span></code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0012-air-gap/start.ts</figcaption><pre><code>FAIL  Installs whole, or not at all
+      1.10.0 -&gt; installed, running 1.10.0, 0004 applied; 1.11.1 (migration 0006 fails) -&gt; crashed, then running 1.11.1, tool_calls exists; 1.11.2 -&gt; installed, running 1.11.2 (want 1.10.0 with 0004; 1.11.1 refused with nothing changed; 1.11.2 with 0005 and 0006)
+FAIL  Every file matches the manifest
+      02 (one byte changed in weights.bin) -&gt; installed 1.10.1; 04 (clean copy) -&gt; installed (want 02 refused naming model/weights.bin, still running 1.10.0; then 04 installed)
+FAIL  Nothing outside the manifest
+      03 (extra tools/debug-shell.sh) -&gt; installed 1.10.1 (want refused, naming tools/debug-shell.sh)
+FAIL  Trusts only the pinned key, offline
+      05 (signed by another key, which it brings along) -&gt; installed 1.11.0; outbound connection attempts: 9 (https://releases.vendor.example/signing-key.pub) (want refused, and 0 attempts)
+FAIL  Never goes backwards
+      1.10.0 over 1.9.2 -&gt; installed; 06 (the old 1.9.2 bundle, found on a stick) -&gt; installed 1.9.2, then running 1.9.2 (want 1.10.0 installed, 1.9.2 refused, still running 1.10.1)
+FAIL  Nothing in the release calls out
+      07 (vendor defaults left in config.json) -&gt; installed 1.11.0; 09 (only torvik.internal hosts) -&gt; installed (want 07 refused naming telemetry_endpoint and crash_reports.url; 09 installed)
+FAIL  Logs every import
+      0 row(s) for 9 imports; 01-agent-1.10.0 has no row; 02-agent-1.10.1 has no row; and 7 more (want one row per import, in order, with the media, the claimed version, the manifest's sha256, the outcome, and a reason for each refusal)
+
+0/7 checks pass.</code></pre></figure>
+
+<p>Read what got in. A model file with a changed byte. A shell script nobody signed. A release signed by a stranger, accepted because the stranger packed their own key. Last September's version, put back in place over this month's. A build that sends traces to the vendor's cloud. And nine attempts to reach a key server, each one an alert on Ingrid's screen. The signature check worked every time. It just checked the wrong things.</p>
+
+<p>Fix <code>start.ts</code>. The TODO list in the file follows the checks. Give yourself 35 minutes before you open the solution.</p>
+<ol>
+  <li>Migrations, their records and the version switch in one <code>db.transaction</code>. A failure changes nothing.</li>
+  <li>Hash every listed file, and check its size. One mismatch refuses the bundle.</li>
+  <li>Refuse unlisted files (apart from the three envelope files) and missing ones.</li>
+  <li>Verify <code>manifest.sig</code> with <code>PINNED_KEY</code> before you trust the manifest. No network, no key from the bundle.</li>
+  <li>Only a newer version, compared part by part as numbers.</li>
+  <li>Every URL in <code>config.json</code>, however deep, must have a host inside <code>torvik.internal</code>.</li>
+  <li>One <code>import_log</code> row per call, with the manifest's hash and, for a refusal, the reason.</li>
+</ol>
+
+<p>The full solution is in <code>solution.ts</code>. Two small functions carry two of the traps:</p>
+
+<figure class="code"><figcaption>exercises/0012-air-gap/solution.ts</figcaption><pre><code><span class="c">/** 1 if a is newer than b, -1 if older, 0 if equal. "1.10.0" vs "1.9.2" compares 10 with 9, not "1" with "9". */</span>
+function compareVersions(a: string, b: string): number {
+  const pa = a.split(".").map(Number), pb = b.split(".").map(Number);
+  for (let i = 0; i &lt; Math.max(pa.length, pb.length); i++) {
+    const d = (pa[i] ?? 0) - (pb[i] ?? 0);
+    if (d) return Math.sign(d);
+  }
+  return 0;
+}
+
+const inside = (url: string) =&gt; {
+  try {
+    const host = new URL(url).hostname; <span class="c">// the host, lower-cased: not the path, not the query</span>
+    return host === INSIDE || host.endsWith("." + INSIDE);
+  } catch {
+    return false;
+  }
+};</code></pre></figure>
+
+<p>Semantic Versioning says it plainly: "Major, minor, and patch versions are always compared numerically."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://semver.org/#semantic-versioning-specification-semver">Semantic Versioning 2.0.0</a>, item 11, on precedence.</span> As strings, <code>"1.10.0" &lt; "1.9.2"</code>, because "1" sorts before "9". And the second function checks the host, because the vendor's crash reporter lives at <code>https://crashes.vendor.example/tenants/torvik.internal/report</code>: a check that looks for "torvik.internal" anywhere in the URL waves it through.</p>
+
+<figure class="code"><figcaption>exercises/0012-air-gap/solution.ts · the end of importBundle()</figcaption><pre><code><span class="c">// All checks passed. Migrations, their records and the version switch: one transaction.</span>
+try {
+  await db.transaction(async (tx) =&gt; {
+    <span class="c">// … for each migration not yet in schema_migrations: tx.exec(sql), then record it …</span>
+    await tx.query("update deployment set version = $1, manifest_sha256 = $2, installed_at = $3 where id = 1",
+      [manifest.version, entry.manifestHash, now().toISOString()]);
+  });
+} catch (e) {
+  return refuse(`A database migration failed: ${(e as Error).message}. Everything was rolled back; ${running.version} is still running.`);
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0012-air-gap/solution.ts</figcaption><pre><code>PASS  Installs whole, or not at all
+      1.10.0 -&gt; installed, running 1.10.0, 0004 applied; 1.11.1 (migration 0006 fails) -&gt; refused, then running 1.10.1, tool_calls absent; 1.11.2 -&gt; installed, running 1.11.2 (want 1.10.0 with 0004; 1.11.1 refused with nothing changed; 1.11.2 with 0005 and 0006)
+PASS  Every file matches the manifest
+      02 (one byte changed in weights.bin) -&gt; refused ("model/weights.bin doesn't match the signed manifest (changed or damaged after signing). Nothing was changed."); 04 (clean copy) -&gt; installed (want 02 refused naming model/weights.bin, still running 1.10.0; then 04 installed)
+PASS  Nothing outside the manifest
+      03 (extra tools/debug-shell.sh) -&gt; refused ("Files on the media that the signed manifest doesn't list: tools/debug-shell.sh. Nothing was changed.") (want refused, naming tools/debug-shell.sh)
+PASS  Trusts only the pinned key, offline
+      05 (signed by another key, which it brings along) -&gt; refused ("manifest.sig wasn't made by the vendor's release key pinned on the high side. A key that comes with the media proves nothing. Nothing was changed."); outbound connection attempts: 0 (want refused, and 0 attempts)
+PASS  Never goes backwards
+      1.10.0 over 1.9.2 -&gt; installed; 06 (the old 1.9.2 bundle, found on a stick) -&gt; refused ("1.9.2 isn't newer than 1.10.1, which is running now. Nothing was changed."), then running 1.10.1 (want 1.10.0 installed, 1.9.2 refused, still running 1.10.1)
+PASS  Nothing in the release calls out
+      07 (vendor defaults left in config.json) -&gt; refused ("config.json points outside torvik.internal: telemetry_endpoint (otel.vendor.example), crash_reports.url (crashes.vendor.example). Ask the vendor for a build without them. Nothing was changed."); 09 (only torvik.internal hosts) -&gt; installed (want 07 refused naming telemetry_endpoint and crash_reports.url; 09 installed)
+PASS  Logs every import
+      9 row(s) for 9 imports (want one row per import, in order, with the media, the claimed version, the manifest's sha256, the outcome, and a reason for each refusal)
+
+7/7 checks pass.
+
+The import log, as Torvik's accreditor reads it:
+  12-02  01-agent-1.10.0          1.10.0  37d818cba429  installed
+  12-04  02-agent-1.10.1          1.10.1  b6eff829f78f  refused: model/weights.bin doesn't match the signed manifest (changed or damaged after s…
+  12-05  03-agent-1.10.1-resent   1.10.1  a8f7c1083fde  refused: Files on the media that the signed manifest doesn't list: tools/debug-shell.sh.…
+  12-08  04-agent-1.10.1-clean    1.10.1  dca27585ad2b  installed
+  12-10  05-agent-1.11.0          1.11.0  23265680aa75  refused: manifest.sig wasn't made by the vendor's release key pinned on the high side. A…
+  12-11  06-agent-1.9.2           1.9.2   148183a8292d  refused: 1.9.2 isn't newer than 1.10.1, which is running now. Nothing was changed.
+  12-14  07-agent-1.11.0          1.11.0  69de81ea1dd1  refused: config.json points outside torvik.internal: telemetry_endpoint (otel.vendor.exa…
+  12-16  08-agent-1.11.1          1.11.1  0b5858b073dd  refused: A database migration failed: column "draft" does not exist. Everything was roll…
+  12-18  09-agent-1.11.2          1.11.2  2bc89f639f77  installed
+
+Running now: 1.11.2. Migrations: 0001, 0002, 0003, 0004, 0005, 0006.</code></pre></figure>
+
+<p>Three installs, six refusals, and every refusal says what to send next. The vendor can match each hash in the log against its own release record without ever seeing the high side.</p>
+
+<p>Try three experiments in a copy of <code>solution.ts</code>. Replace <code>compareVersions(manifest.version, running.version) &lt;= 0</code> with <code>manifest.version &lt;= running.version</code>: 1.10.0 is refused as "older" than 1.9.2, nothing installs, and four checks fail. Undo that, and make <code>inside()</code> return <code>url.includes(INSIDE)</code>: only check 6 fails, because the crash reporter's URL gets through. Undo that too, and replace <code>db.transaction(async (tx) =&gt; { … })</code> with a plain function called on <code>db</code>: only check 1 fails. Migration 0005 stays in place after 0006 breaks, and the next install has to work around half a release.</p>
+
+<h2>7 · On the list, or fixed in the build?</h2>
+
+<p>You ran the agent in a test copy of Torvik's network with all egress denied, and read what tried to get out. Each card is one connection. Decide whether it goes on the allowed list, or gets fixed in the build so it never tries again.</p>
+
+<script type="application/json" data-sort="l12-egress">
+{
+  "buckets": ["Allow it: add to the egress list", "Fix it in the build"],
+  "items": [
+    { "label": "llm.torvik.internal:8000", "detail": "The model server on Torvik's GPUs.", "bucket": 0,
+      "why": "The agent can't work without it, and it's inside. Put it on the list with its port and the reason." },
+    { "label": "DNS to Torvik's resolver", "detail": "Port 53, the address Torvik's IT gave you.", "bucket": 0,
+      "why": "\"A default deny-all egress policy also blocks DNS traffic\" (<a href=\"https://kubernetes.io/docs/concepts/services-networking/network-policies/#default-deny-all-egress-traffic\">Kubernetes</a>). Without it, no other name on the list resolves. Torvik's own resolver only, never a public one." },
+    { "label": "huggingface.co", "detail": "The model library checks for a newer tokenizer at start-up.", "bucket": 1,
+      "why": "Ship the files in the image and set HF_HUB_OFFLINE=1: \"If set, no HTTP calls will be made to the Hugging Face Hub\" (<a href=\"https://huggingface.co/docs/huggingface_hub/package_reference/environment_variables#hfhuboffline\">Hugging Face</a>)." },
+    { "label": "otel.torvik.internal:4318", "detail": "Traces, to Torvik's own collector.", "bucket": 0,
+      "why": "Inside, and it's how Torvik's on-call sees what the agent does. It replaces the dashboards you had at Acme." },
+    { "label": "crashes.vendor.example", "detail": "Your company's crash reporter, on by default.", "bucket": 1,
+      "why": "It sends data out of Torvik's network to your company. Turn it off in the build, and write crashes to Torvik's own logs." },
+    { "label": "registry.npmjs.org", "detail": "The container installs packages when it starts.", "bucket": 1,
+      "why": "Install everything when you build the image, so the container starts with nothing to download. On the high side there's no registry to reach." },
+    { "label": "releases.vendor.example", "detail": "The update script fetches the vendor's signing key.", "bucket": 1,
+      "why": "The key is pinned on the high side at accreditation. A key fetched at install time, or carried on the same disk, proves nothing." },
+    { "label": "crm.torvik.internal:443", "detail": "The agent looks up orders and contacts.", "bucket": 0,
+      "why": "A tool the agent needs, inside Torvik's network. On the list, with the service account it uses (<a href=\"0003-enterprise-identity-for-agents.html\">Lesson 3</a>)." },
+    { "label": "support.vendor.example:22", "detail": "A tunnel so your team can debug the agent from the office.", "bucket": 1,
+      "why": "Exactly what an air gap exists to stop. Torvik's on-call follows your runbook, and a fix arrives as a new release." }
+  ]
+}
+</script>
+
+<h2>8 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l12-recall">
+{
+  "questions": [
+    { "q": "The agent runs in a private subnet with no public IP addresses. Its route table sends outbound traffic to a NAT gateway. Can it reach the internet?",
+      "options": ["No: private means fully isolated", "Yes: outbound calls still work", "Only over the company VPN", "Only for its DNS lookups"],
+      "answer": 1,
+      "why": "\"You can use a NAT gateway so that instances in a private subnet can connect to services outside your VPC but external services can't initiate a connection with those instances\" (<a href=\"https://docs.aws.amazon.com/vpc/latest/userguide/vpc-nat-gateway.html\">AWS</a>). Private stops calls in, not calls out." },
+    { "q": "A Kubernetes namespace has no NetworkPolicy at all. Where may its pods send traffic?",
+      "options": ["Nowhere without a rule", "Anywhere, to any address", "Only DNS and HTTPS", "Only inside the cluster"],
+      "answer": 1,
+      "why": "\"By default, a pod is non-isolated for egress; all outbound connections are allowed\" (<a href=\"https://kubernetes.io/docs/concepts/services-networking/network-policies/\">Kubernetes</a>). Default deny is something you add." },
+    { "q": "You apply a default-deny egress policy. Now the agent can't even resolve llm.torvik.internal. Why?",
+      "options": ["It also blocks DNS", "The model server crashed", "Kubernetes needs a restart", "The hostname is wrong"],
+      "answer": 0,
+      "why": "\"A default deny-all egress policy also blocks DNS traffic\" (<a href=\"https://kubernetes.io/docs/concepts/services-networking/network-policies/#default-deny-all-egress-traffic\">Kubernetes</a>). Allow DNS to the customer's own resolver first." },
+    { "q": "A customer's IT lead says: \"We'd use Claude through Microsoft Foundry, so nothing leaves Azure.\" What do you answer?",
+      "options": ["Yes: Azure keeps everything inside", "No: Azure always shares prompts", "Only if training is enabled", "Check the hosting option first"],
+      "answer": 3,
+      "why": "One of the two options is an \"Anthropic-operated service running on Anthropic infrastructure\", and even on Azure, operational data \"is stored on Anthropic's systems outside Azure\" (<a href=\"https://platform.claude.com/docs/en/build-with-claude/claude-in-microsoft-foundry\">Anthropic</a>). Quote the page, with the date." },
+    { "q": "A disk holds a bundle with its own signing-key.pub, and manifest.sig verifies with that key. What does that prove?",
+      "options": ["The vendor built it", "The files are intact", "Nothing about the sender", "The version is newer"],
+      "answer": 2,
+      "why": "Whoever made the disk chose the key. TUF: the client \"MUST ship with trusted root keys\", installed by \"an out-of-band process\" (<a href=\"https://theupdateframework.github.io/specification/latest/#root-role\">TUF</a>). At Torvik, that's the key pinned at accreditation." },
+    { "q": "The signature on manifest.json is valid, but model/weights.bin doesn't match its hash in the manifest. What should the gate do?",
+      "options": ["Install: the signature is valid", "Install it, then warn Ingrid", "Install all except the weights", "Refuse the bundle, naming it"],
+      "answer": 3,
+      "why": "The signature covers the manifest. The manifest covers each file by its hash. A file that doesn't match was changed or damaged after signing, and half a release is a mix-and-match the vendor never built." },
+    { "q": "1.9.2 is running. A signed bundle says 1.10.0. The script compares the two versions as strings. What happens?",
+      "options": ["It installs 1.10.0 as expected", "It refuses 1.10.0 as older", "It crashes on the dots", "It asks Ingrid to decide"],
+      "answer": 1,
+      "why": "As strings, \"1.10.0\" sorts before \"1.9.2\". Semantic Versioning: \"Major, minor, and patch versions are always compared numerically\" (<a href=\"https://semver.org/#semantic-versioning-specification-semver\">semver.org</a>)." },
+    { "q": "Last September's genuine, signed 1.9.2 bundle turns up on a stick. Which attack does refusing it stop?",
+      "options": ["A rollback attack", "A freeze attack", "A mix-and-match attack", "An arbitrary-installation attack"],
+      "answer": 0,
+      "why": "\"An attacker cannot trick clients into installing software that is older than that which the client previously knew to be available\" (<a href=\"https://theupdateframework.github.io/specification/latest/#goals-to-protect-against-specific-attacks\">TUF</a>). An old version can bring back old bugs." },
+    { "q": "The vendor really did sign 1.11.0, but its config.json sends traces to otel.vendor.example. What should the gate do?",
+      "options": ["Install it: the vendor signed", "Install, and block it later", "Refuse, naming the config key", "Rewrite the URL to inside"],
+      "answer": 2,
+      "why": "A signature says who built it, not that it's safe here. Name the key so the vendor knows what to change. Rewriting it would install something nobody signed." },
+    { "q": "Migration 0006 fails halfway through an import. What should be true afterwards?",
+      "options": ["The new version, half migrated", "The old version, nothing changed", "No version until someone fixes", "Both versions running in parallel"],
+      "answer": 1,
+      "why": "Migrations, their records and the version switch run in one transaction: \"A group of database changes that succeed or fail together.\" The old version keeps running, and the reason goes in the import log." },
+    { "q": "From Lesson 10: Luis rolls back a bad prompt change. What happens to the settings history?",
+      "options": ["The bad version is deleted", "History is reset to v1", "A new version is added", "The vendor must approve it"],
+      "answer": 2,
+      "why": "A rollback copies the old settings into a new version, so history keeps everything. Today's rule is the other half: a disk that claims to be new must be newer, and going back is a decision someone makes on purpose." },
+    { "q": "From Lesson 11: Torvik's model runs on its own GPUs, inside. Is masking personal data still useful?",
+      "options": ["No: nothing leaves the network", "Only when calling a provider", "Only for health data records", "Yes: logs and eval copies"],
+      "answer": 3,
+      "why": "The model provider was one copy of many. Logs, traces and golden-set copies still exist inside, and more people can read them than need to. OWASP keeps bank and card data out of logs wherever they live (<a href=\"https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude\">Logging Cheat Sheet</a>)." }
+  ]
+}
+</script>
+
+<h2>9 · Write Torvik's plan</h2>
+
+<p>Torvik's security team won't approve the agent until they have a network and release plan they can check line by line. Write it for them: people who read firewall rules all day, but don't know your product. It saves as you type.</p>
+
+<script type="application/json" data-practice="l12-plan">
+{
+  "title": "For Torvik's security team: network and release plan for the support agent",
+  "maxWords": 250,
+  "fields": [
+    { "key": "where", "label": "Where it runs", "hint": "The agent, the model, the database: which network, whose hardware." },
+    { "key": "out", "label": "Every connection it makes", "hint": "Host, port, why. And what happens to everything else." },
+    { "key": "build", "label": "What's in the image", "hint": "So that nothing is downloaded when it starts." },
+    { "key": "in", "label": "How a release gets in", "hint": "Who carries it, what the high side checks, where the record is." },
+    { "key": "fix", "label": "When something breaks", "hint": "Who does what, without anyone from outside logging in." }
+  ],
+  "checks": [
+    "It lists every allowed destination with host, port and reason, and says everything else is denied by default",
+    "DNS to Torvik's own resolver is on the list",
+    "It says the model weights, packages and tokenizer files are in the image, and names a setting that stops downloads (e.g. HF_HUB_OFFLINE=1)",
+    "It says telemetry and crash reports go only to Torvik's own collector",
+    "It says the release key is pinned on the high side, and how its fingerprint was checked",
+    "It names what the import gate checks: signature, hashes, unlisted files, a newer version, config URLs, and one transaction",
+    "It says where the import log lives and who reads it",
+    "It says how often releases cross, and how an urgent security fix gets across sooner",
+    "It says how problems are handled without remote access: the runbook, error messages someone can read over the phone, who calls whom",
+    "250 words or fewer"
+  ]
+}
+</script>
+
+<p>The first check matters most. Torvik's team will compare your list with what their firewall sees. If something tries to get out that isn't on your list, they stop trusting the rest of the page.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 30 minutes</p>
+  <p><a href="https://theupdateframework.github.io/specification/latest/">The Update Framework Specification</a>: section 1.5, "Goals", then section 2.1, "Roles and PKI", on the root role and its keys. It was written for package managers on the open internet, and every attack in it applies to a disk carried into a closed network. Read it with today's exercise open, and find the attack each check stops. Then find the attacks the exercise doesn't stop yet, such as a manifest that never expires.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small" id="up-next">Up next (planned): <strong>Lesson 13, Edge and on-prem inference</strong> (Stage 8, specialist). Today the model was a file called <code>weights.bin</code> that arrived on a disk. Lesson 13 is about running it: choosing a model that fits the customer's GPUs, serving it, and checking it still passes the golden set after it's made smaller. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>
