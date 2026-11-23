@@ -19,9 +19,9 @@ The 12 stages come from [Suraj Sharma's FDE roadmap](https://x.com/suraj_sharma1
 | Lesson | Stage | File | Status |
 |---|---|---|---|
 | 1 | Overview | `lessons/0001-the-real-job-behind-the-roadmap.html` | done |
-| 2 | 11 · Discovery & scoping | `lessons/0002-discovery-and-scoping.html` | |
-| 3 | 1 · Enterprise identity & agent access | `lessons/0003-enterprise-identity-for-agents.html` | |
-| 4 | 4 · Permission-filtered retrieval | `lessons/0004-permission-filtered-retrieval.html` | |
+| 2 | 11 · Discovery & scoping | `lessons/0002-discovery-and-scoping.html` | done |
+| 3 | 1 · Enterprise identity & agent access | `lessons/0003-enterprise-identity-for-agents.html` | done |
+| 4 | 4 · Permission-filtered retrieval | `lessons/0004-permission-filtered-retrieval.html` | done |
 | 5 | 5 · MCP & legacy integration | `lessons/0005-mcp-and-legacy-integration.html` | planned |
 | 6 | 3 · Legacy data & ETL | `lessons/0006-legacy-data-and-etl.html` | planned |
 | 7 | 7 · Human-in-the-loop & durable workflows | `lessons/0007-human-in-the-loop-workflows.html` | planned |
