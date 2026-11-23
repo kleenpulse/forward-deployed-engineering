@@ -41,6 +41,8 @@
   --title: #111;
   --text: #1b1b1b;
   --field: #fff;
+  --scroll-thumb: #b9b5a6;
+  --scroll-thumb-hover: #8f8b7e;
   color-scheme: light;
   --font-text: "Mozilla Text", "Segoe UI", system-ui, sans-serif;
   --font-label: "Cascadia Code", "Cascadia Mono", ui-monospace, Consolas, monospace;
@@ -65,6 +67,8 @@
     --bad: #ee8f84;
     --bad-tint: #2a1311;
     --field: #0b0b0b;
+    --scroll-thumb: #4a5363;
+    --scroll-thumb-hover: #6b7585;
     color-scheme: dark;
   }
 }
@@ -72,6 +76,11 @@
 * { box-sizing: border-box; }
 
 html { font-size: 17px; }
+
+/* The page scrollbar is drawn by scrollbar.js as an overlay. Hiding the native one means
+   no gutter, so the column never jumps sideways when a page becomes scrollable. */
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { display: none; }
 
 body {
   margin: 0;
@@ -383,6 +392,32 @@ nav.course a { color: var(--muted); }
 .scroll-ring[data-away]:focus-visible .label-top { translate: 0 0; opacity: 1; filter: none; }
 @media (prefers-reduced-motion: reduce) { .scroll-ring .label, .scroll-ring-frame { transition: none !important; } }
 @media print { .scroll-ring-frame { display: none !important; } }
+
+/* ---------- Scrollbar (scrollbar.js) ---------- */
+
+/* A 12px hit area on the right edge holding a 4px thumb. Fixed, and moved only with
+   transform, so it never takes space or triggers layout. */
+.scrollbar {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 60; width: 12px;
+  opacity: 0; pointer-events: none;
+  transition: opacity 400ms cubic-bezier(0, 0, .2, 1);
+}
+.scrollbar[data-active] { opacity: 1; transition-duration: 150ms; }
+.scrollbar[data-still] { display: none; }
+.scrollbar-thumb {
+  position: absolute; top: 0; right: 3px; width: 4px;
+  border-radius: 999px; background: var(--scroll-thumb);
+  transition: width 150ms cubic-bezier(0, 0, .2, 1), background-color 150ms;
+  will-change: transform;
+}
+/* Mouse and trackpad: the edge wakes the bar, and the thumb widens a little to grab. */
+@media (hover: hover) and (pointer: fine) {
+  .scrollbar { pointer-events: auto; }
+  .scrollbar:hover .scrollbar-thumb, .scrollbar[data-dragging] .scrollbar-thumb { width: 6px; background: var(--scroll-thumb-hover); }
+  .scrollbar[data-dragging] { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) { .scrollbar, .scrollbar-thumb { transition: none !important; } }
+@media print { .scrollbar { display: none !important; } }
 
 /* ---------- Code blocks ---------- */
 
