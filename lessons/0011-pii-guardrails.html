@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 11 · PII guardrails</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0010-handoff-and-self-serve.html">← Lesson 10</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 11 · Stage 6 (specialist) · about 60 minutes</p>
+<h1>PII guardrails</h1>
+<p class="subtitle">Petra, Acme's data protection officer, has read the agent's data flow and has one question before the next contract year: why does the model provider get Jan's bank account number? It doesn't need it to say his order arrived. This lesson builds the proxy that keeps names, addresses, phone numbers, bank accounts and card numbers inside Acme, and gives them back only to the person or tool that needs them.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>A masking proxy, in Postgres and TypeScript, between Acme's agent and the model: three detectors that cover each other's gaps, checksums that tell a card number from an invoice number, placeholders that stay the same for the same person, unmasking only for Kim's review queue or a tool call and only within the same conversation, a log of every unmask that never holds the values, and a one-way copy of each email for the golden set. Then the one-page answer Petra asked for.</p>
+</div>
+
+<h2>1 · Where personal data goes</h2>
+
+<p>GDPR, the EU's data protection law, starts with a wide definition: "'personal data' means any information relating to an identified or identifiable natural person".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Regulation (EU) 2016/679 (GDPR)</a>, Article 4(1). The same article lists "a name, an identification number, location data, an online identifier" as examples.</span> Acme sells to bike shops, so it's tempting to think the emails are company data. They aren't. <code>sanne.visser@fietsplaats.example</code> is a work address, and it still names Sanne. Here is what one December morning brings into the support inbox:</p>
+<table>
+  <thead><tr><th>Email</th><th>Personal data in it</th><th>What the agent needs</th></tr></thead>
+  <tbody>
+    <tr><td>c-201, Sanne at Fietsplaats</td><td>Her name, work email, mobile number, and "pieter from our workshop"</td><td>Order A-1001, "Saturday"</td></tr>
+    <tr><td>c-202, Jan at Leidse Fietsen</td><td>His name and his IBAN, twice, once with spaces and once without</td><td>Order A-1004, Florence 3, EUR 1,299.00</td></tr>
+    <tr><td>c-203, Markus at Velo Köln</td><td>His name, email and phone, a colleague's name and number, and a card number</td><td>Order A-1003, an invoice number</td></tr>
+  </tbody>
+</table>
+
+<p>The right column is short. GDPR's principle of data minimisation says personal data must be "adequate, relevant and limited to what is necessary in relation to the purposes for which they are processed".<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Article 5(1)(c)</a>.</span> The model needs the order number to call <code>get_order</code>. It doesn't need Jan's IBAN to tell him his frames were delivered.</p>
+
+<p>And the email doesn't stop at the model. Every copy is one more place to protect:</p>
+<ul>
+  <li><strong>The model provider.</strong> What it keeps depends on your contract. Anthropic, for example, offers zero data retention (ZDR): "Under a ZDR arrangement, Anthropic does not store customer prompts or responses at rest after the API response is returned." You have to ask for it.<span class="sn-ref"></span><span class="sidenote numbered">Anthropic, <a href="https://platform.claude.com/docs/en/manage-claude/api-and-data-retention">"API and data retention"</a>, checked November 2026: "To request ZDR for your organization, contact the Anthropic sales team", and it "is enabled per organization". Some features and models are not covered; the page lists them.</span></li>
+  <li><strong>Your traces.</strong> <a href="0009-telemetry-and-roi.html">Lesson 9</a> left prompts out of the spans, because the conventions call them sensitive.</li>
+  <li><strong>Your logs.</strong> OWASP's list of things that "should usually not be recorded directly in the logs" includes "Bank account or payment card holder data" and "Sensitive personal data and some forms of personally identifiable information (PII)".<span class="sn-ref"></span><span class="sidenote numbered">OWASP, <a href="https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude">Logging Cheat Sheet, "Data to exclude"</a>.</span></li>
+  <li><strong>The golden set.</strong> <a href="0008-evals-on-customer-data.html">Lesson 8</a> built it from real emails "with names removed". Today you learn how.</li>
+</ul>
+
+<p>There is a security reason too. Simon Willison calls it the lethal trifecta: an agent with "Access to your private data", "Exposure to untrusted content" and "The ability to externally communicate". "If your agent combines these three features, an attacker can easily trick it into accessing your private data and sending it to that attacker."<span class="sn-ref"></span><span class="sidenote numbered">Simon Willison, <a href="https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/">"The lethal trifecta for AI agents: private data, untrusted content, and external communication"</a> (June 2025).</span> Acme's agent reads email from anyone, and it writes replies. Masking takes the first leg away from the model: an IBAN it never saw is an IBAN a prompt injection can't make it repeat.</p>
+
+<h2>2 · Five ways to hide a value</h2>
+
+<p>People use these words as if they meant the same thing. They don't, and the difference decides what you may do with the result.</p>
+<table>
+  <thead><tr><th>Method</th><th>Example</th><th>Can you get it back?</th><th>Use it for</th></tr></thead>
+  <tbody>
+    <tr><td>Redact</td><td><code>[IBAN]</code>, or nothing at all</td><td>No</td><td>Logs, and copies like the golden set</td></tr>
+    <tr><td>Pseudonymise with placeholders</td><td><code>[IBAN_1]</code>, plus a vault</td><td>Yes, with the vault</td><td>The model's view of a live conversation</td></tr>
+    <tr><td>Hash</td><td><code>a3f1…</code></td><td>Often, by guessing</td><td>Matching records, with a secret salt</td></tr>
+    <tr><td>Encrypt, keeping the format</td><td><code>NL28 XQZB 8812 0937 51</code></td><td>Yes, with the key</td><td>Old systems that check the format</td></tr>
+    <tr><td>Anonymise</td><td>No link to anyone, by anyone</td><td>No</td><td>Statistics, research, sharing</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Pseudonymisation is still personal data.</strong> GDPR defines it as processing "in such a manner that the personal data can no longer be attributed to a specific data subject without the use of additional information, provided that such additional information is kept separately".<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Article 4(5)</a>.</span> The vault is that additional information. And the law is clear about the result: data that "could be attributed to a natural person by the use of additional information should be considered to be information on an identifiable natural person". Only anonymous information falls outside it.<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Recital 26</a>: "The principles of data protection should therefore not apply to anonymous information".</span> So masking lowers the risk. It doesn't switch the law off.</p>
+
+<p>What about the model provider, who never sees the vault? The EDPB said in January 2025 that pseudonymised data stays personal "even if pseudonymised data and additional information are not in the hands of the same person".<span class="sn-ref"></span><span class="sidenote numbered">EDPB, <a href="https://www.edpb.europa.eu/documents/guideline/guidelines-012025-on-pseudonymisation_en">Guidelines 01/2025 on Pseudonymisation</a>, version 1 for public consultation, "Executive summary".</span> In September 2025 the EU's Court of Justice was more careful: pseudonymised data "must not be regarded as constituting, in all cases and for every person, personal data". But it also said identifiability is assessed "from the point of view of the controller".<span class="sn-ref"></span><span class="sidenote numbered">Court of Justice of the EU, Case C-413/23 P, <i>EDPS v SRB</i>, 4 September 2025, <a href="https://curia.europa.eu/jcms/upload/docs/application/pdf/2025-09/cp250107en.pdf">press release No 107/25</a>. The case is about the regulation for EU institutions, which uses the same definitions as GDPR.</span> Acme is the controller, and you work for Acme. For both of you, the masked emails are personal data. Whether they are for the provider is a question for lawyers, and not a promise you should make.</p>
+
+<p><strong>A hash is not a hiding place.</strong> The US Federal Trade Commission: "hashes aren't “anonymous” and can still be used to identify users". Email addresses and phone numbers come from small, guessable sets, so anyone can hash every guess and compare.<span class="sn-ref"></span><span class="sidenote numbered">FTC, <a href="https://www.ftc.gov/policy/advocacy-research/tech-at-ftc/2024/07/no-hashing-still-doesnt-make-your-data-anonymous">"No, hashing still doesn't make your data anonymous"</a> (July 2024).</span> HIPAA's guidance agrees: "a code derived from a secure hash function without a secret key (e.g., “salt”) would be considered an identifying element".<span class="sn-ref"></span><span class="sidenote numbered">US Department of Health and Human Services, <a href="https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html#uniquenumber">"Guidance Regarding Methods for De-identification of Protected Health Information"</a>, section 3.5.</span> The safe choice for a placeholder is a plain counter, <code>[IBAN_1]</code>. HIPAA's rule for re-identification codes describes it well: the code "is not derived from or related to information about the individual".<span class="sn-ref"></span><span class="sidenote numbered">45 CFR 164.514(c), quoted in the <a href="https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html#standard">same HHS guidance, "The De-identification Standard"</a>.</span></p>
+
+<p><strong>Format-preserving encryption is for old systems.</strong> If a core banking system rejects anything that isn't IBAN-shaped, FPE gives it an IBAN-shaped ciphertext. NIST's methods are FF1 and FF3, and its 2025 draft revision drops FF3 after researchers "identified vulnerabilities when the number of possible inputs (i.e., the domain size) is sufficiently small".<span class="sn-ref"></span><span class="sidenote numbered">NIST, <a href="https://csrc.nist.gov/pubs/sp/800/38/g/r1/2pd">SP 800-38G Rev. 1, second public draft</a> (February 2025): "The encryption method FF3 is no longer specified."</span> A model doesn't check formats, so the proxy uses placeholders. Reach for FPE only when a system you can't change does.</p>
+
+<h2>3 · Finding it: three detectors</h2>
+
+<p>You can't mask what you don't find. Presidio, the open-source PII toolkit, combines "Named Entity Recognition, regular expressions, rule based logic and checksum", and still warns: "there is no guarantee that Presidio will find all sensitive information. Consequently, additional systems and protections should be employed."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://presidio.dataprivacystack.org/">Presidio</a>, "Main features" and "Warning". Presidio started at Microsoft and is now a community project; its docs moved to this address.</span> Use detectors that fail in different places:</p>
+<table>
+  <thead><tr><th>Detector</th><th>Good at</th><th>Misses or gets wrong</th></tr></thead>
+  <tbody>
+    <tr><td>Your own records: the CRM's contacts for this ticket's account</td><td>People Acme knows, in any spelling: "pieter" is Pieter Bakker</td><td>Anyone not in the CRM, like Markus's colleague Lena</td></tr>
+    <tr><td>Patterns with a checksum</td><td>Emails, IBANs, card numbers, phone numbers</td><td>Anything without a fixed shape</td></tr>
+    <tr><td>NER, a model that tags names in text</td><td>Names nobody told you about</td><td>Lower-case names, and words that look like names</td></tr>
+  </tbody>
+</table>
+
+<p>Each mistake costs something different. A false negative leaks: the NER model in the exercise misses "pieter", so only the CRM catches him. A false positive breaks the agent: the same model tags "Florence" in "Florence 3" as a person with a score of 0.81, and an agent that reads "two [PERSON_1] 3 frames" can't start the return. A score threshold doesn't fix both: Lena, a real person, scores 0.58, below the mistake. The fix is an allow-list: Acme's product names and its own email domain are business data, so hits inside them don't count.</p>
+
+<p><strong>Let the format check itself.</strong> Card numbers and IBANs carry check digits. Presidio's card recognizer runs a Luhn check on every candidate, and its IBAN recognizer validates "using regex and checksum".<span class="sn-ref"></span><span class="sidenote numbered">Presidio source: <a href="https://github.com/data-privacy-stack/presidio/blob/main/presidio-analyzer/presidio_analyzer/predefined_recognizers/generic/credit_card_recognizer.py"><code>credit_card_recognizer.py</code></a> and <a href="https://github.com/data-privacy-stack/presidio/blob/main/presidio-analyzer/presidio_analyzer/predefined_recognizers/generic/iban_recognizer.py"><code>iban_recognizer.py</code></a>. Its <a href="https://presidio.dataprivacystack.org/supported_entities/">supported entities</a> table lists CREDIT_CARD as "Pattern match and checksum".</span> Markus's email has two sixteen-digit numbers. <code>4111 1111 1111 1111</code> passes the Luhn check: it's a card. <code>2026 0000 1234 5678</code> fails it: it's his invoice number, and the agent needs it. Classify each run of digits once, as a whole, or a phone pattern will happily eat the last twelve digits of the invoice.</p>
+
+<p>Detection is a first pass, not a promise. Some personal data has no shape at all: "Sorry for the slow reply, I was in hospital" matches no pattern and no name. Section 7 comes back to that.</p>
+
+<h2>4 · The proxy: placeholders in, values out</h2>
+
+<p>The design is Presidio's own pseudonymisation sample: replace each value with a placeholder like <code>&lt;PERSON_1&gt;</code>, keep the mapping, and "Since the user/client is holding the entity_mapping, it is possible to use it for de-anonymization as well."<span class="sn-ref"></span><span class="sidenote numbered">Presidio, <a href="https://github.com/data-privacy-stack/presidio/blob/main/docs/samples/python/pseudonymization.ipynb">"Use Presidio Anonymizer for Pseudonymization of PII data"</a> (sample notebook).</span> Four rules make it safe:</p>
+<ol>
+  <li><strong>Same value, same placeholder.</strong> Jan's IBAN appears twice, once with spaces. If it becomes <code>[IBAN_1]</code> and <code>[IBAN_2]</code>, the model thinks he has two accounts. Normalise first (no spaces, lower-case emails, a first name maps to the contact's full name), then look the value up in the vault before you number a new one.</li>
+  <li><strong>The vault is per conversation.</strong> <code>[IBAN_1]</code> in Jan's conversation is his account. In Sanne's conversation it means nothing, and unmasking it there must fail. Otherwise a model that mixes up two threads, or an email that quotes a placeholder, can put Jan's account number in Sanne's reply.</li>
+  <li><strong>Unmask only at the two exits.</strong> Kim's review queue, because at Acme a person reads and sends every draft (the adoption number in <a href="0009-telemetry-and-roi.html">Lesson 9</a> counts how often they use it), and the tool runner, where <code>start_return</code> needs the real IBAN. Nothing else gets real values. A placeholder the vault doesn't know for this conversation, like a made-up <code>[PERSON_99]</code>, refuses the whole call.</li>
+  <li><strong>Log every unmask, but never the values.</strong> Who asked, why, which placeholders, and whether it was refused. A log that copied the values would be a second vault, and a less protected one.</li>
+</ol>
+
+<p>The vault is now the most sensitive table you own. GDPR names "the pseudonymisation and encryption of personal data" as security measures.<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Article 32(1)(a)</a>.</span> The EDPB adds that pseudonymisation's effectiveness "is highly dependent on the choice of the pseudonymisation domain and its isolation from additional information".<span class="sn-ref"></span><span class="sidenote numbered">EDPB, <a href="https://www.edpb.europa.eu/documents/guideline/guidelines-012025-on-pseudonymisation_en">Guidelines 01/2025</a>, "Executive summary".</span> So keep the vault where Acme's data may live (<a href="0002-discovery-and-scoping.html">Lesson 2's data residency</a>), encrypted, readable only by the proxy, and out of every log and trace. And delete rows when the conversation closes: GDPR says personal data is "kept in a form which permits identification of data subjects for no longer than is necessary".<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Article 5(1)(e)</a>, "storage limitation".</span></p>
+
+<h2>5 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0011-pii/</code>. The top of <code>harness.ts</code> describes the three emails, the <code>tickets</code> and <code>contacts</code> tables, the NER stand-in, the product catalogue and the <code>unmask_log</code> table. You write four functions: <code>setup</code>, <code>mask</code>, <code>unmask</code> and <code>exportCase</code>. The harness sends each masked email to a stand-in model that keeps a copy of everything it receives, like a provider's logs, and the checks read that copy.</p>
+
+<p><code>start.ts</code> is the proxy most people write first: two regular expressions, the NER model's names, and a map in memory.</p>
+
+<figure class="code"><figcaption>exercises/0011-pii/start.ts · mask()</figcaption><pre><code>async function mask(conv: string, text: string): Promise&lt;string&gt; {
+  let out = text.replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, (m) =&gt; hide("EMAIL", m)); <span class="c">// email addresses</span>
+  out = out.replace(/\+?\d[\d -]{7,}\d/g, (m) =&gt; hide("PHONE", m)); <span class="c">// "anything that looks like a phone number"</span>
+  for (const hit of await findNames(out)) out = out.replaceAll(hit.text, hide("PERSON", hit.text));
+  return out;
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0011-pii/start.ts</figcaption><pre><code>FAIL  Nothing personal reaches the model
+      c-201 leaks pieter; c-202 leaks NL91ABNA; c-203 leaks none (want none: not "pieter" in lower case, not an IBAN with or without spaces, not a phone number in any format)
+FAIL  Keeps what the agent needs
+      hidden or changed: c-202 "Florence 3", c-203 "returns@acme.example" (want every order number, "Florence 3", "EUR 1,299.00", returns@acme.example and the company names unchanged)
+FAIL  A checksum tells a card from an invoice
+      card 4111 1111 1111 1111 hidden; invoice 2026 0000 1234 5678 hidden or changed (want the card hidden and the invoice kept, digit for digit)
+FAIL  Same value, same placeholder
+      c-202: 0 IBAN placeholder(s), 0 distinct; 3 PERSON, 2 distinct. c-201: 1 distinct PERSON. c-203: 4 distinct PHONE (want c-202: 2 IBAN and 2 PERSON, 1 distinct each; c-201: 2 people, Sanne and Pieter; c-203: 2 phone numbers)
+FAIL  Unmasks only its own placeholders
+      c-201 shows the real name; c-202 shows the real name; c-203 shows the real name; start_return gets nothing (no [IBAN_n] placeholder in what the model saw); c-202's IBAN placeholder asked for in c-201 -&gt; not tried; made-up [PERSON_99] -&gt; unmasked (want three real names, the IBAN for the tool, and both of the last two refused)
+FAIL  Logs every unmask, never the values
+      0 row(s) for 4 unmask calls; values in the log: none; call 1 (c-201, reply-review) has no row; call 2 (c-202, reply-review) has no row; and 2 more (want one row per call, in order, with the placeholders asked for, and no real value anywhere)
+FAIL  The golden-set copy can't be unmasked
+      c-201: leaks pieter, the vault puts back sanne, visser, pieter, 31612345678, sanne.visser@fietsplaats.example; c-202: leaks NL91ABNA, lost Florence 3, the vault puts back jan, boer, NL91ABNA0417164300, NL91ABNA, 0417164300; c-203: lost returns@acme.example, the vault puts back markus, schulz, lena, hoffmann, 4111111111111111, 4922147110815, 022147110816, m.schulz@velo-koeln.example (want each copy free of personal data, with the order details kept, and nothing the vault can put back)
+
+0/7 checks pass.
+
+c-202, as the model provider saw it:
+  | Hello,
+  |
+  | Two [PERSON_6] 3 frames on order A-1004 arrived cracked. Photos attached. Please refund EUR 1,299.00 to NL91 ABNA [PHONE_4] (account holder [PERSON_7]).
+  |
+  | Regards,
+  | [PERSON_7]
+  | Leidse Fietsen · IBAN NL91ABNA[PHONE_5]</code></pre></figure>
+
+<p>Read what the provider saw. Half of Jan's IBAN, cut where the phone pattern happened to start. A bike model turned into a person. Two different placeholders for one bank account, so the model can't tell they're the same, and the draft never mentions the refund. And the golden-set copy looks clean, but every placeholder in it is a key the vault still holds.</p>
+
+<p>Fix <code>start.ts</code>. The TODO list in the file follows the checks. Give yourself 35 minutes before you open the solution.</p>
+<ol>
+  <li>Three detectors: the CRM contacts for this ticket's account (full name and first name, any case), patterns with checksums, and every <code>findNames()</code> hit.</li>
+  <li>An allow-list: no name inside a product name, no Acme address.</li>
+  <li>Classify each whole run of digits once: Luhn-valid card, phone, or keep. IBANs pass mod 97. When hits overlap, the first and longest wins.</li>
+  <li>One placeholder per normalised value, numbered per conversation, kept in a vault table.</li>
+  <li><code>unmask</code> looks up this conversation only, and refuses the call if any placeholder is unknown.</li>
+  <li>One <code>unmask_log</code> row per call, with the placeholders, never the values.</li>
+  <li><code>exportCase</code>: the same detection, a label with no number, nothing stored.</li>
+</ol>
+
+<p>The full solution is in <code>solution.ts</code>. The part that does the most work is the overlap rule at the end of <code>detect()</code>, because it lets each detector be simple:</p>
+
+<figure class="code"><figcaption>exercises/0011-pii/solution.ts · inside detect()</figcaption><pre><code><span class="c">// every run of digits, classified once, as a whole</span>
+for (const m of text.matchAll(/\+?\d(?:[ -]?\d)*/g)) {
+  const digits = m[0].replace(/\D/g, "");
+  const type =
+    m[0].startsWith("+") ? "PHONE" :
+    digits.length &gt;= 13 &amp;&amp; digits.length &lt;= 19 &amp;&amp; luhn(digits) ? "CARD" :
+    m[0].startsWith("0") &amp;&amp; digits.length &gt;= 8 ? "PHONE" :
+    null; <span class="c">// order numbers, invoice numbers, amounts, years: keep</span>
+  if (type) spans.push({ start: m.index, end: m.index + m[0].length, type, value: … });
+}
+<span class="c">// … the CRM, emails, IBANs and NER add their spans too …</span>
+
+<span class="c">// Overlaps: the span that starts first wins, then the longer one. So the email address beats</span>
+<span class="c">// the "Sanne" inside it, and the IBAN beats the run of digits inside it.</span>
+spans.sort((a, b) =&gt; a.start - b.start || b.end - a.end);
+const kept = [];
+for (const s of spans) if (!kept.length || s.start &gt;= kept[kept.length - 1].end) kept.push(s);</code></pre></figure>
+
+<figure class="code"><figcaption>exercises/0011-pii/solution.ts · unmask()</figcaption><pre><code>async function unmask(conv, text, actor, purpose) {
+  const asked = [...new Set(text.match(PLACEHOLDER) ?? [])].sort();
+  const { rows } = await db.query(
+    "select placeholder, value from vault where conv = $1 and placeholder = any($2)", [conv, asked]);
+  const found = new Map(rows.map((r) =&gt; [r.placeholder, r.value]));
+  const unknown = asked.filter((p) =&gt; !found.has(p));
+  const error = unknown.length
+    ? `${unknown.join(", ")} ${unknown.length === 1 ? "isn't" : "aren't"} in conversation ${conv}. Nothing was unmasked.`
+    : null;
+  await db.query("insert into unmask_log (at, conv, actor, purpose, placeholders, outcome, error) values (…)",
+    [now().toISOString(), conv, actor, purpose, asked, error ? "refused" : "unmasked", error]);
+  return error ? { ok: false, error } : { ok: true, text: text.replace(PLACEHOLDER, (p) =&gt; found.get(p)) };
+}</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0011-pii/solution.ts</figcaption><pre><code>PASS  Nothing personal reaches the model
+      c-201 leaks none; c-202 leaks none; c-203 leaks none (want none: not "pieter" in lower case, not an IBAN with or without spaces, not a phone number in any format)
+PASS  Keeps what the agent needs
+      hidden or changed: none (want every order number, "Florence 3", "EUR 1,299.00", returns@acme.example and the company names unchanged)
+PASS  A checksum tells a card from an invoice
+      card 4111 1111 1111 1111 hidden; invoice 2026 0000 1234 5678 kept (want the card hidden and the invoice kept, digit for digit)
+PASS  Same value, same placeholder
+      c-202: 2 IBAN placeholder(s), 1 distinct; 2 PERSON, 1 distinct. c-201: 2 distinct PERSON. c-203: 2 distinct PHONE (want c-202: 2 IBAN and 2 PERSON, 1 distinct each; c-201: 2 people, Sanne and Pieter; c-203: 2 phone numbers)
+PASS  Unmasks only its own placeholders
+      c-201 shows the real name; c-202 shows the real name; c-203 shows the real name; start_return gets the real IBAN; c-202's [IBAN_1] asked for in c-201 -&gt; refused; made-up [PERSON_99] -&gt; refused (want three real names, the IBAN for the tool, and both of the last two refused)
+PASS  Logs every unmask, never the values
+      6 row(s) for 6 unmask calls; values in the log: none (want one row per call, in order, with the placeholders asked for, and no real value anywhere)
+PASS  The golden-set copy can't be unmasked
+      c-201: one-way; c-202: one-way; c-203: one-way (want each copy free of personal data, with the order details kept, and nothing the vault can put back)
+
+7/7 checks pass.
+
+c-202, as the model provider saw it:
+  | Hello,
+  |
+  | Two Florence 3 frames on order A-1004 arrived cracked. Photos attached. Please refund EUR 1,299.00 to [IBAN_1] (account holder [PERSON_1]).
+  |
+  | Regards,
+  | [PERSON_1]
+  | Leidse Fietsen · IBAN [IBAN_1]
+
+The draft, as Kim sees it in the review queue:
+  | Hi Jan de Boer,
+  |
+  | Order A-1004 is delivered on 2 December.
+  | Once the return is approved, we'll refund the account NL91ABNA0417164300.
+  |
+  | Acme Support
+
+Unmask log: 10 calls, 2 refused.</code></pre></figure>
+
+<p>Now the model sees one person and one account, used twice, and it writes the refund line the naive version lost. Kim sees the real values. The provider never did.</p>
+
+<p>Try two experiments in a copy of <code>solution.ts</code>. First, add a score threshold to the NER loop: <code>if (hit.score &lt; 0.6) continue;</code>. Checks 1 and 7 fail: Lena Hoffmann goes to the model and into the golden set, while Florence, the mistake, would still need the allow-list. Undo that, and remove <code>&amp;&amp; luhn(digits)</code> from the card rule. Only check 3 fails: the invoice number is now a "card", and the agent can no longer look it up.</p>
+
+<h2>6 · The golden-set copy</h2>
+
+<p>Placeholders are right for a live conversation, because Kim and the tools need the values back. They are wrong for a copy that will be kept, shared with the eval team, and maybe sent to a vendor: anyone with the vault can put the names back, so the copy is still personal data. <code>exportCase()</code> runs the same detection and writes <code>[PERSON]</code> and <code>[IBAN]</code>, with no number and nothing stored.</p>
+
+<p>That is still not anonymisation by itself. GDPR asks about "all the means reasonably likely to be used, such as singling out".<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Recital 26</a>.</span> "A bike shop in Utrecht with a workshop and an event on Saturday" might single out Sanne without her name. HIPAA's guidance says the same about free text: clinical notes "may provide context that readily allows for patient identification".<span class="sn-ref"></span><span class="sidenote numbered">HHS de-identification guidance, <a href="https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html#protected">section 3.10, free text fields</a>.</span> So a person from Luis's team reads every case before it goes in, as they did when they wrote the expected answers in <a href="0008-evals-on-customer-data.html">Lesson 8</a>. The detectors do the bulk; the person does the judgement.</p>
+
+<h2>7 · A bank or a hospital</h2>
+
+<p>This stage is marked specialist because its heavy version comes with regulated customers. The proxy stays the same. What changes is the data, the contracts, and who decides.</p>
+<table>
+  <thead><tr><th></th><th>Acme (bikes)</th><th>A bank</th><th>A hospital</th></tr></thead>
+  <tbody>
+    <tr><td>Most sensitive data</td><td>IBANs, the odd card number</td><td>Account and card numbers, everywhere</td><td>Health data: diagnoses, notes, scans</td></tr>
+    <tr><td>Rules on top of GDPR</td><td>The contract with Acme</td><td>Card industry and banking rules; ask their security team which apply</td><td>GDPR's special category data; in the US, HIPAA</td></tr>
+    <tr><td>Before the model sees anything</td><td>Mask, ask for ZDR</td><td>Mask; FPE where an old system checks formats</td><td>A signed BAA with the provider, then mask</td></tr>
+    <tr><td>What detection misses</td><td>"I was in hospital"</td><td>Free-text notes about a customer's finances</td><td>Almost everything that matters: notes, dates, rare conditions</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Health data is a different category.</strong> Under GDPR, processing "data concerning health" is prohibited unless one of a list of exceptions applies.<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Article 9(1) and 9(2)</a>.</span> In the US, HIPAA lists 18 identifiers that must go for data to count as de-identified under its "Safe Harbor" method, including names, every date "directly related to an individual" except the year, phone numbers, email addresses and "Account numbers", and the list applies "regardless of its location in a record", free text included.<span class="sn-ref"></span><span class="sidenote numbered">HHS de-identification guidance, <a href="https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html#standard">"The De-identification Standard"</a> and <a href="https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html#protected">section 3.10</a>.</span> Masking five types, as Acme does, is nowhere near that.</p>
+
+<p><strong>Masking doesn't remove the contract.</strong> HHS on cloud providers: one that handles a hospital's health data "is a business associate", and "This is true even if the CSP processes or stores only encrypted ePHI and lacks an encryption key for the data."<span class="sn-ref"></span><span class="sidenote numbered">HHS, <a href="https://www.hhs.gov/hipaa/for-professionals/special-topics/health-information-technology/cloud-computing/index.html">"Guidance on HIPAA &amp; Cloud Computing"</a>. <span class="no-terms">CSP: cloud service provider.</span></span> So the hospital signs a BAA with the model provider first. Some providers offer one: Anthropic's API supports PHI "With a signed BAA and a HIPAA-enabled organization".<span class="sn-ref"></span><span class="sidenote numbered">Anthropic, <a href="https://platform.claude.com/docs/en/manage-claude/api-and-data-retention#hipaa-readiness">"API and data retention", "HIPAA readiness"</a>, checked November 2026.</span> The proxy then adds data minimisation on top. It never replaces the contract.</p>
+
+<p><strong>You don't decide this alone.</strong> In every row, the customer's data protection officer, security team and lawyers decide what may leave, and where to. Your job is to make their decision true in code, show them what the model sees, and tell them plainly what detection misses. A list of known gaps earns more trust than a claim of "100% PII removal".</p>
+
+<h2>8 · Placeholder, or as is?</h2>
+
+<p>Each card is something in Acme's December emails. Decide whether it goes to the model as it is, or as a placeholder.</p>
+
+<script type="application/json" data-sort="l11-mask">
+{
+  "buckets": ["Send to the model as is", "Replace with a placeholder"],
+  "items": [
+    { "label": "Order number A-1001", "detail": "Sanne asks where it is.", "bucket": 0,
+      "why": "The agent passes it to get_order. It identifies an order, not a person, and hiding it makes the agent useless." },
+    { "label": "NL91 ABNA 0417 1643 00", "detail": "Jan's IBAN, for the refund.", "bucket": 1,
+      "why": "Bank account data. The model only needs to know there is an account; the start_return tool gets the real value through unmask, at the exit." },
+    { "label": "sanne.visser@fietsplaats.example", "detail": "A work address.", "bucket": 1,
+      "why": "It names a person, so it's personal data under GDPR, Article 4(1), even at a company." },
+    { "label": "Florence 3", "detail": "The NER model tags \"Florence\" as a person, score 0.81.", "bucket": 0,
+      "why": "A product in Acme's catalogue: a false positive. The allow-list keeps it, or the agent can't start the return." },
+    { "label": "returns@acme.example", "detail": "Markus wrote there last week.", "bucket": 0,
+      "why": "Acme's own address. Not a customer's personal data, and the agent may need to point people to it." },
+    { "label": "pieter", "detail": "\"pieter from our workshop can pick them up\"", "bucket": 1,
+      "why": "A person, written in lower case, so the NER model misses him. The CRM knows Pieter Bakker at Fietsplaats." },
+    { "label": "2026 0000 1234 5678", "detail": "Markus's invoice number.", "bucket": 0,
+      "why": "Sixteen digits, but it fails the Luhn check, so it isn't a card. The agent needs it to find the payment." },
+    { "label": "4111 1111 1111 1111", "detail": "The company card Markus paid with.", "bucket": 1,
+      "why": "Passes the Luhn check: a card number. OWASP keeps \"payment card holder data\" out of logs, and the model has no use for it." },
+    { "label": "EUR 1,299.00", "detail": "The value of Jan's return.", "bucket": 0,
+      "why": "The agent needs the amount: at EUR 500 or more the return waits for a manager's approval (<a href=\"0007-human-in-the-loop-workflows.html\">Lesson 7</a>)." },
+    { "label": "Lena Hoffmann", "detail": "Markus's colleague; not in the CRM. NER score 0.58.", "bucket": 1,
+      "why": "A real person with a low score. That's why the proxy uses every NER hit, and an allow-list for the mistakes, instead of a threshold." }
+  ]
+}
+</script>
+
+<h2>9 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l11-recall">
+{
+  "questions": [
+    { "q": "Sanne writes from sanne.visser@fietsplaats.example, a work address at a bike shop. Is it personal data under GDPR?",
+      "options": ["No, it's a company address", "Only if she buys personally", "Yes, it identifies a person", "Only when sent outside Europe"],
+      "answer": 2,
+      "why": "\"'personal data' means any information relating to an identified or identifiable natural person\" (<a href=\"https://eur-lex.europa.eu/eli/reg/2016/679/oj\">GDPR, Article 4(1)</a>). A work address that contains her name identifies her." },
+    { "q": "The proxy sends [IBAN_1] to the model and keeps the vault. For Acme, what is the masked email?",
+      "options": ["Still personal data, pseudonymised", "Anonymous data, outside GDPR", "Encrypted data, so exempt", "Public data, shareable freely"],
+      "answer": 0,
+      "why": "Data that \"could be attributed to a natural person by the use of additional information\" is still personal (<a href=\"https://eur-lex.europa.eu/eli/reg/2016/679/oj\">GDPR, Recital 26</a>). The Court of Justice assesses it \"from the point of view of the controller\", and Acme is the controller." },
+    { "q": "Why not replace each email address with its SHA-256 hash instead of a placeholder?",
+      "options": ["Hashes take too much database space", "Models refuse to read hex strings", "Hashing is slower than a lookup", "Anyone can hash guesses and compare"],
+      "answer": 3,
+      "why": "\"hashes aren't “anonymous” and can still be used to identify users\" (<a href=\"https://www.ftc.gov/policy/advocacy-research/tech-at-ftc/2024/07/no-hashing-still-doesnt-make-your-data-anonymous\">FTC</a>). HIPAA's guidance calls an unsalted hash \"an identifying element\". A counter like [EMAIL_1] says nothing about the person." },
+    { "q": "The NER model gives Lena Hoffmann 0.58 and Florence 0.81. Which fix hides Lena and keeps Florence 3?",
+      "options": ["A threshold of 0.6", "A threshold of 0.85", "An allow-list of products", "Removing the NER model"],
+      "answer": 2,
+      "why": "A threshold below 0.58 keeps the mistake; one above 0.81 drops Lena too. The allow-list removes the mistake by meaning, not by score. Removing NER leaks Lena, who isn't in the CRM." },
+    { "q": "Sixteen digits, 2026 0000 1234 5678, follow the word \"invoice\". They fail the Luhn check. What does the proxy do?",
+      "options": ["Masks them as a card", "Masks them as a phone", "Keeps them, digit for digit", "Drops them from the email"],
+      "answer": 2,
+      "why": "A card number passes the Luhn check; this doesn't, so it's not a card, and the agent needs it. Classify the whole run once, or a phone pattern grabs part of it." },
+    { "q": "The model's draft for Sanne's conversation contains [IBAN_1], which belongs to Jan's conversation. What should unmask() do?",
+      "options": ["Refuse, and log the attempt", "Insert Jan's IBAN into it", "Quietly delete the placeholder text", "Ask the model to retry"],
+      "answer": 0,
+      "why": "The vault is per conversation. Unmasking it would put Jan's account number in Sanne's reply. The refused attempt goes in the unmask log, where someone can see it." },
+    { "q": "What should a row in the unmask log hold?",
+      "options": ["The real values it showed", "Placeholders, who, why, and outcome", "Only the refused unmask calls", "Full drafts, before and after"],
+      "answer": 1,
+      "why": "Who, why, which placeholders and what happened answers every audit question. The values would make the log a second, less protected vault: OWASP keeps \"Bank account or payment card holder data\" out of logs (<a href=\"https://cheatsheetseries.owasp.org/cheatsheets/Logging_Cheat_Sheet.html#data-to-exclude\">Logging Cheat Sheet</a>)." },
+    { "q": "You copy the masked email, with its [PERSON_1] placeholders, into the golden set. What's wrong?",
+      "options": ["Nothing: the names are gone", "Placeholders break the eval grader", "The golden set needs names", "The vault can restore them"],
+      "answer": 3,
+      "why": "The placeholders are keys the vault still holds, so the copy is pseudonymised, not anonymous. Use labels with no number, store nothing, and have a person read each case for clues like \"a shop in Utrecht\"." },
+    { "q": "A US hospital masks patient names before calling a model provider. Does it still need a BAA?",
+      "options": ["No, masked data isn't PHI", "Only if the provider trains", "Yes, even for encrypted ePHI", "Only for data kept overnight"],
+      "answer": 2,
+      "why": "Names are one of HIPAA's 18 identifiers, so the rest is still PHI. And HHS says a provider is a business associate \"even if the CSP processes or stores only encrypted ePHI and lacks an encryption key\" (<a href=\"https://www.hhs.gov/hipaa/for-professionals/special-topics/health-information-technology/cloud-computing/index.html\">HHS</a>)." },
+    { "q": "From Lesson 9: what do the GenAI conventions say about capturing prompts and replies in spans?",
+      "options": ["Capture them by default, always", "Don't capture them by default", "Capture them only on errors", "Hash them before you capture"],
+      "answer": 1,
+      "why": "Instrumentations \"SHOULD NOT capture them by default, but SHOULD provide an option for users to opt in\" (<a href=\"https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md#capturing-instructions-inputs-and-outputs\">GenAI spans</a>). Today's proxy is the other half: what you do send is masked." },
+    { "q": "From Lesson 8: who decides what a correct reply is for a golden-set case?",
+      "options": ["The FDE building it", "The customer's domain expert", "The model provider's staff", "Whoever writes the grader"],
+      "answer": 1,
+      "why": "The principal domain expert: at Acme, Luis Romero's support team. The same people read each exported case before it goes into the golden set." }
+  ]
+}
+</script>
+
+<h2>10 · Answer Petra</h2>
+
+<p>Petra asked what personal data reaches the model provider, and why. Write the answer she can put in Acme's records. Write it for her, not for an engineer. It saves as you type.</p>
+
+<script type="application/json" data-practice="l11-dpo">
+{
+  "title": "For Acme's data protection officer: personal data and the support agent",
+  "maxWords": 220,
+  "fields": [
+    { "key": "sent", "label": "What the model provider receives", "hint": "What's in each request, and what isn't." },
+    { "key": "how", "label": "How personal data is found and replaced", "hint": "The detectors, and what a placeholder looks like." },
+    { "key": "back", "label": "Who sees the real values", "hint": "The two exits, and the record kept of each." },
+    { "key": "vault", "label": "The vault", "hint": "Where it lives, who can read it, when it's deleted." },
+    { "key": "gaps", "label": "What this doesn't catch", "hint": "Known gaps, and what covers them." }
+  ],
+  "checks": [
+    "It says what the model still needs and receives: order numbers, amounts, product and company names",
+    "It names the five types replaced: names, email addresses, phone numbers, IBANs, card numbers",
+    "It says placeholders are numbered per conversation and are not hashes of the values",
+    "It names the two exits (Kim's review queue, tool calls such as start_return) and that each unmask is logged without the values",
+    "It says where the vault lives, that only the proxy can read it, and when rows are deleted",
+    "It says the masked text is still personal data for Acme, so masking reduces risk but doesn't remove obligations",
+    "It names at least one gap: free text like \"I was in hospital\", or a name the CRM and NER both miss",
+    "It says how golden-set copies are made: no placeholders that can be reversed, and a person reads each one",
+    "No promise like \"all personal data is removed\"",
+    "220 words or fewer"
+  ]
+}
+</script>
+
+<p>The ninth check matters most. Petra has read many vendor answers that promise everything. The one that lists its own gaps is the one she can rely on.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 30 minutes</p>
+  <p>The EDPB's <a href="https://www.edpb.europa.eu/documents/guideline/guidelines-012025-on-pseudonymisation_en">Guidelines 01/2025 on Pseudonymisation</a>: the executive summary, then the sections on the "pseudonymisation domain" and on protecting the "pseudonymisation secrets". It is what Acme's DPO reads, written by the EU's data protection authorities, and it explains why the vault, not the masking, is where the work is. It came out before the Court of Justice's September 2025 ruling, so read the two side by side.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small">Up next (planned): <strong>Lesson 12, Air-gapped and VPC deployment</strong> (Stage 2, specialist). Today the model ran at a provider, and you kept personal data away from it. Some customers won't let any of their data leave their network at all. Lesson 12 is what changes when the whole agent has to run inside it. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>
