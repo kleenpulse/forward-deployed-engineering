@@ -30,6 +30,10 @@
     <input id="jargon-q" type="search" placeholder="Try RLS, on-prem or tenant" autocomplete="off" spellcheck="false" aria-controls="jargon">
     <span class="count" id="jargon-count" aria-live="polite"></span>
   </div>
+  <div class="tabs" role="tablist" aria-label="Which terms">
+    <button type="button" role="tab" id="tab-all" data-tab="all" aria-controls="jargon">All <span class="n" id="n-all"></span></button>
+    <button type="button" role="tab" id="tab-starred" data-tab="starred" aria-controls="jargon">Starred <span class="n" id="n-starred"></span></button>
+  </div>
 </div>
 
 <table class="no-terms fixed">
@@ -67,10 +71,30 @@
     return text.split(re).map((part, i) => (i % 2 ? `<mark>${esc(part)}</mark>` : esc(part))).join("");
   }
 
+  // Stars: saved in this browser only, under fde:jargon:starred.
+  const KEY = "fde:jargon:starred";
+  const known = new Set(all.map((t) => t.term));
+  const tabs = [...document.querySelectorAll('.tabs [role="tab"]')];
+  let tab = new URLSearchParams(location.search).get("tab") === "starred" ? "starred" : "all";
+  let starred = load();
+
+  function load() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(KEY) || "[]");
+      return new Set(Array.isArray(saved) ? saved.filter((s) => known.has(s)) : []);
+    } catch {
+      return new Set();
+    }
+  }
+  function save() {
+    try { localStorage.setItem(KEY, JSON.stringify([...starred])); } catch {}
+  }
+
   function render() {
     const q = input.value.trim();
     const ws = words(q);
-    let rows = index.filter((r) => ws.every((w) => r.hay.includes(w)));
+    const pool = tab === "starred" ? index.filter((r) => starred.has(r.t.term)) : index;
+    let rows = pool.filter((r) => ws.every((w) => r.hay.includes(w)));
     if (ws.length) {
       // Rank: term starts with the query, then the term contains it, then meaning-only hits.
       const whole = ws.join(" ");
@@ -78,17 +102,67 @@
       rows = rows.map((r, i) => [rank(r), i, r]).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map((x) => x[2]);
     }
     const hl = ws.filter((w) => w.length > 1);
+    const star = (t) => {
+      const on = starred.has(t.term);
+      return `<button class="star" type="button" aria-pressed="${on}" aria-label="Star ${esc(t.term)}" data-term="${esc(t.term)}">${on ? "★" : "☆"}</button>`;
+    };
+    const empty =
+      tab === "starred" && !starred.size
+        ? "No starred terms yet. Press ☆ next to a term to keep it here."
+        : `No ${tab === "starred" ? "starred " : ""}term matches “${esc(q)}”.${tab === "all" ? " Ask me about it, and I'll add it here." : ""}`;
     body.innerHTML = rows.length
       ? rows.map(({ t }) =>
-          `<tr><td><strong>${mark(t.term, hl)}</strong></td><td class="small">${mark(t.full || "", hl)}</td><td>${mark(t.def, hl)}</td></tr>`
+          `<tr><td>${star(t)}<strong>${mark(t.term, hl)}</strong></td><td class="small">${mark(t.full || "", hl)}</td><td>${mark(t.def, hl)}</td></tr>`
         ).join("")
-      : `<tr class="empty"><td colspan="3">No term matches “${esc(q)}”. Ask me about it, and I'll add it here.</td></tr>`;
-    count.textContent = ws.length ? `${rows.length} of ${all.length}` : `${all.length} terms`;
+      : `<tr class="empty"><td colspan="3">${empty}</td></tr>`;
+
+    const total = tab === "starred" ? starred.size : all.length;
+    const noun = tab === "starred" ? "starred" : "terms";
+    count.textContent = ws.length ? `${rows.length} of ${total}${tab === "starred" ? " starred" : ""}` : `${total} ${noun}`;
+    document.getElementById("n-all").textContent = all.length;
+    document.getElementById("n-starred").textContent = starred.size;
+    tabs.forEach((b) => {
+      const on = b.dataset.tab === tab;
+      b.setAttribute("aria-selected", on);
+      b.tabIndex = on ? 0 : -1;
+    });
 
     const url = new URL(location.href);
     if (q) url.searchParams.set("q", q); else url.searchParams.delete("q");
+    if (tab === "starred") url.searchParams.set("tab", "starred"); else url.searchParams.delete("tab");
     history.replaceState(null, "", url);
   }
+
+  const starBtn = (term) => [...body.querySelectorAll(".star")].find((b) => b.dataset.term === term);
+
+  body.addEventListener("click", (e) => {
+    const btn = e.target.closest(".star");
+    if (!btn) return;
+    const term = btn.dataset.term;
+    // Remember the next row's star, in case this row leaves the Starred view.
+    const stars = [...body.querySelectorAll(".star")];
+    const i = stars.indexOf(btn);
+    const next = (stars[i + 1] || stars[i - 1] || {}).dataset?.term;
+    if (starred.has(term)) starred.delete(term); else starred.add(term);
+    save();
+    render();
+    const target = starBtn(term) || (next && starBtn(next)) || document.getElementById("tab-starred");
+    target.focus();
+  });
+
+  tabs.forEach((b) => b.addEventListener("click", () => { tab = b.dataset.tab; render(); }));
+  document.querySelector(".tabs").addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight" && e.key !== "Home" && e.key !== "End") return;
+    e.preventDefault();
+    const i = tabs.findIndex((b) => b.dataset.tab === tab);
+    const j = e.key === "Home" ? 0 : e.key === "End" ? tabs.length - 1 : (i + (e.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    tab = tabs[j].dataset.tab;
+    render();
+    tabs[j].focus();
+  });
+
+  // Stars set in another browser tab show up here too.
+  addEventListener("storage", (e) => { if (e.key === KEY) { starred = load(); render(); } });
 
   input.value = new URLSearchParams(location.search).get("q") || "";
   input.addEventListener("input", render);
