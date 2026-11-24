@@ -22,7 +22,12 @@
   const byVariant = new Map();
   TERMS.forEach((t, i) => {
     t.id = "t" + i;
-    t.match.forEach((v) => byVariant.set(v.toLowerCase(), { t, v }));
+    // Keep every exact spelling: "BF16" and "bf16" share a key, and both must stay valid.
+    t.match.forEach((v) => {
+      const hit = byVariant.get(v.toLowerCase());
+      if (hit && hit.t === t) hit.vs.add(v);
+      else byVariant.set(v.toLowerCase(), { t, vs: new Set([v]) });
+    });
   });
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const variants = [...byVariant.keys()].sort((a, b) => b.length - a.length).map(esc);
@@ -35,7 +40,7 @@
   function lookup(text) {
     const hit = byVariant.get(text.toLowerCase());
     if (!hit) return null;
-    if (!hit.t.ci && hit.v !== text) return null; // acronyms are case-sensitive
+    if (!hit.t.ci && !hit.vs.has(text)) return null; // acronyms are case-sensitive
     return hit.t;
   }
 

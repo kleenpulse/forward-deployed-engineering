@@ -40,7 +40,7 @@ About 60 minutes: roughly 20 of reading, 40 of doing. One tangible win, stated a
 
 Copy `lessons/0001-the-real-job-behind-the-roadmap.html` as the skeleton. In order:
 
-1. `<head>`: `../assets/course.css`, then `../assets/theme.js` (not deferred), then `../assets/scroll-ring.js`, `../assets/scrollbar.js` and `../assets/nav-dock.js`, all with `defer`.
+1. `<head>`: `../assets/course.css`, then `<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">` (on GitHub Pages, `/favicon.ico` belongs to the user site, not this course), then `../assets/theme.js` (not deferred), then `../assets/scroll-ring.js`, `../assets/scrollbar.js` and `../assets/nav-dock.js`, all with `defer`.
 2. `<nav class="course">`: Course index · previous lesson · next lesson (only if it exists) · Roadmap reference · Jargon decoder.
 3. `.kicker` ("Forward Deployed Engineering · Lesson N · Stage S · about 60 minutes"), `h1`, `.subtitle`, and the `small no-terms` hint line about dotted words.
 4. `.win`: what the reader will have at the end.
@@ -99,4 +99,4 @@ For stages that are built, not discussed, add a small runnable exercise:
 bun scripts/check-lessons.ts
 ```
 
-It checks widget JSON, quiz word counts, answer positions and local links. Then open the page with `bun run dev` (Vite, http://localhost:5173), click through every widget, and hover a few dotted terms.
+It checks widget JSON, quiz word counts, answer positions, local links, the icon link on every page, and that no two glossary terms share a spelling. Then open the page with `bun run dev` (Vite, http://localhost:5173), click through every widget, and hover a few dotted terms.

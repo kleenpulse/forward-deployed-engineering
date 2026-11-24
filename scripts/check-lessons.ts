@@ -1,5 +1,6 @@
 // Checks every lesson and reference page: widget JSON parses, quiz options have
-// equal word counts, correct answers move around, and local links resolve.
+// equal word counts, correct answers move around, local links resolve, every page links
+// the course icon, and no two glossary terms share a spelling.
 // Run: bun scripts/check-lessons.ts   (exits 1 on any problem)
 import { Glob } from "bun";
 import { dirname, join, resolve } from "node:path";
@@ -52,6 +53,28 @@ for (const page of pages) {
     const target = m[1];
     if (/^(https?:|mailto:|data:)/.test(target)) continue;
     if (!existsSync(join(root, dirname(page), target))) problems.push(`${page}: broken local link ${target}`);
+  }
+}
+
+// Every page shows the course icon (on GitHub Pages, /favicon.ico is the user site's, not ours).
+for (const page of pages) {
+  const html = await Bun.file(join(root, page)).text();
+  if (!/<link rel="icon" href="[^"]*assets\/favicon\.svg"/.test(html)) problems.push(`${page}: no <link rel="icon"> to assets/favicon.svg`);
+}
+
+// The glossary: one term per spelling. Two terms sharing a spelling (in any letter case)
+// means tooltip.js can only ever show one of them.
+{
+  const src = await Bun.file(join(root, "assets/terms.js")).text();
+  const w: any = {};
+  new Function("window", src)(w);
+  const owner = new Map<string, string>();
+  for (const t of w.FDE_TERMS as { term: string; match: string[] }[]) {
+    for (const v of t.match) {
+      const k = v.toLowerCase(), prev = owner.get(k);
+      if (prev && prev !== t.term) problems.push(`assets/terms.js: "${v}" is a spelling of both "${prev}" and "${t.term}"`);
+      owner.set(k, t.term);
+    }
   }
 }
 
