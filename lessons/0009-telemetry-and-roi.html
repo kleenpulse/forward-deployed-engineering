@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>Four SQL queries over a month of OpenTelemetry spans and helpdesk tickets that give Dana honest numbers: cost per team (each token counted once, priced per model, cache included, without your own eval traffic), the agreed success metric against its baseline, adoption by week, and an alert that catches a failure that raised no errors, without paging anyone on a quiet Sunday. Then you write the one-page note for the renewal meeting.</p>
 </div>
 
-<h2>1 · Four questions before the renewal</h2>
+<h2 id="four-questions-before-the-renewal">1 · Four questions before the renewal</h2>
 
 <p>OpenAI's FDE job ad says your success is measured "through production adoption, measurable workflow impact, and eval-driven feedback".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/">OpenAI, Forward Deployed Engineer (FDE) job ad</a>, "About the role", as of November 2026.</span> <a href="0008-evals-on-customer-data.html">Lesson 8</a> was the eval part. This lesson is the other two: does Acme use it, and does it change their work?</p>
 
@@ -49,7 +50,7 @@
   </tbody>
 </table>
 
-<h2>2 · Traces and spans</h2>
+<h2 id="traces-and-spans">2 · Traces and spans</h2>
 
 <p>To answer any of this you need a record of every run. OpenTelemetry is the open standard for that. A trace is "The path of a request through your application", and "A span represents a unit of work or operation. Spans are the building blocks of Traces." Spans nest: "child spans represent sub-operations."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://opentelemetry.io/docs/concepts/signals/traces/">OpenTelemetry, "Traces"</a> and its section <a href="https://opentelemetry.io/docs/concepts/signals/traces/#spans">"Spans"</a>.</span></p>
 
@@ -77,7 +78,7 @@
   <li><strong>Tokens are recorded twice.</strong> More on that next.</li>
 </ul>
 
-<h2>3 · What it costs, per team</h2>
+<h2 id="what-it-costs-per-team">3 · What it costs, per team</h2>
 
 <p>Providers bill by tokens and quote prices per million tokens (MTok).<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://platform.claude.com/docs/en/about-claude/pricing">Anthropic, "Pricing"</a>: model prices are listed per "MTok", and "All prices are in USD". Checked November 2026; prices change, so read them from the page, not from a lesson.</span> So cost is arithmetic on token counts. Three details make it come out wrong:</p>
 
@@ -93,7 +94,7 @@
 
 <p>At Acme the honest total is USD 6.66 for 1,050 live runs in four weeks. The naive query says USD 35,248.28. Either number goes into a slide. Only one survives the customer's finance team checking the invoice.</p>
 
-<h2>4 · Did it save time? Measure what was agreed</h2>
+<h2 id="did-it-save-time-measure-what-was-agreed">4 · Did it save time? Measure what was agreed</h2>
 
 <p>In Lesson 2 Dana and Luis agreed one success metric: the median time to the first response for order-status emails, from the helpdesk, with a baseline of 22 hours. Report that, measured the same way. Not the average, which a few week-long waits pull up. Not all emails, because the agent only drafts order-status replies.</p>
 
@@ -103,7 +104,7 @@
 
 <p>Then turn time into money only with numbers the customer gives you. If Acme says an hour of a support agent costs EUR 40, you can multiply. If you make up the hourly cost, the ROI slide falls apart at the first question.</p>
 
-<h2>5 · Adoption, not activity</h2>
+<h2 id="adoption-not-activity">5 · Adoption, not activity</h2>
 
 <p>"The agent answered 90% of emails" describes the agent. It says nothing about whether anyone used the answers. At Acme the agent writes a draft, and a person sends it or writes their own. The adoption number is the share of order-status emails sent with the agent's draft. In week one that was 56%, not 90%.</p>
 
@@ -111,7 +112,7 @@
 
 <p>Now look at Acme's weeks: 56%, 58%, 69%, then 49%. Week 4 fell by 20 points. Nobody complained, and the error rate was zero. Something broke, and the next section is how you'd have known on the first day.</p>
 
-<h2>6 · Alert on what customers feel</h2>
+<h2 id="alert-on-what-customers-feel">6 · Alert on what customers feel</h2>
 
 <p>Google's SRE book names the four golden signals: "latency, traffic, errors, and saturation. If you can only measure four metrics of your user-facing system, focus on these four." Its definition of errors includes requests that fail "implicitly (for example, an HTTP 200 success response, but coupled with the wrong content)".<span class="sn-ref"></span><span class="sidenote numbered">Google, <i>Site Reliability Engineering</i>, chapter 6, <a href="https://sre.google/sre-book/monitoring-distributed-systems/#xref_monitoring_golden-signals">"Monitoring Distributed Systems", "The Four Golden Signals"</a>.</span> That is a silent failure, and agents produce them all the time.</p>
 
@@ -125,7 +126,7 @@
   <p><strong>The grown-up version: SLOs.</strong> An SLI is "a carefully defined quantitative measure of some aspect of the level of service that is provided", usually "the number of good events divided by the total number of events". An SLO is "a target value or range of values for a service level that is measured by an SLI", and "the error budget is 100% minus the SLO".<span class="sn-ref"></span><span class="sidenote numbered">Google SRE book, <a href="https://sre.google/sre-book/service-level-objectives/#indicators-o8seIAcZ">"Service Level Objectives"</a>; SRE workbook, <a href="https://sre.google/workbook/implementing-slos/#what-to-measure-using-slis">"Implementing SLOs"</a> and <a href="https://sre.google/workbook/alerting-on-slos/#ways-to-alert-on-significant-events">"Alerting on SLOs"</a>.</span> For Acme: SLI = share of live runs the agent answered; SLO = 90% per week; error budget = 10%. Instead of a fixed daily threshold, you alert on the burn rate, "how fast, relative to the SLO, the service consumes the error budget". On 17 November Acme was handing off about half of all runs, five times the 10% budget, so the week's budget was gone in about a day and a half. Start with the simple daily rule; move to SLOs when the customer wants a number in the contract.</p>
 </div>
 
-<h2>7 · Build it</h2>
+<h2 id="build-it">7 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0009-telemetry/</code>. The top of <code>harness.ts</code> describes both tables and every attribute. It generates the same month every time: 1,146 traces, 4,659 spans and 1,030 tickets, loaded into PGlite. <code>start.ts</code> holds the four queries most people write first. Every one runs without an error:</p>
 
@@ -241,7 +242,7 @@ What your numbers tell Dana:
 
 <p>Try one experiment. In a copy of <code>solution.ts</code>, delete the <code>count(*) &gt;= 20</code> line from the alert. Only check 7 fails: the alert now fires on two Sundays. Undo that, and replace <code>coalesce(first_response_at, $1::timestamptz)</code> with <code>first_response_at</code>. Only check 4 fails, by a tenth of an hour, and in the direction that flatters you.</p>
 
-<h2>8 · Value, or a vanity metric?</h2>
+<h2 id="value-or-a-vanity-metric">8 · Value, or a vanity metric?</h2>
 
 <p>Each card is a number someone might put on Acme's renewal slide. Decide whether it shows value, or only looks good.</p>
 
@@ -271,7 +272,7 @@ What your numbers tell Dana:
 }
 </script>
 
-<h2>9 · Check yourself</h2>
+<h2 id="check-yourself">9 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -318,7 +319,7 @@ What your numbers tell Dana:
 }
 </script>
 
-<h2>10 · Write the renewal note</h2>
+<h2 id="write-the-renewal-note">10 · Write the renewal note</h2>
 
 <p>Dana takes one page into Monday's meeting, and will forward it to the CFO. Write it from your numbers. It saves as you type.</p>
 

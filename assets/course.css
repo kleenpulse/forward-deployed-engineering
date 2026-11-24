@@ -474,6 +474,57 @@ nav.course[data-probe] { visibility: hidden; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .scrollbar, .scrollbar-thumb { transition: none !important; } }
 @media print { .scrollbar { display: none !important; } }
 
+/* ---------- Section rail (section-rail.js) ---------- */
+
+/* Where a heading comes to rest after a jump, by the rail or by a #link. */
+main h2[id] { scroll-margin-top: 2.5rem; }
+
+/* The hover zone is a 40px strip along the window's right edge. The scrollbar (z 60)
+   stays on top of its outer few px; the ticks' left padding keeps them clickable. */
+.section-rail {
+  position: fixed; top: 0; bottom: 0; right: 6px; z-index: 40; width: 40px;
+  animation: section-rail-in 500ms cubic-bezier(.22, 1, .36, 1) backwards;
+}
+@keyframes section-rail-in { from { opacity: 0; } }
+.section-rail nav { position: absolute; top: 50%; right: 2px; translate: 0 -50%; }
+.section-rail ol {
+  list-style: none; margin: 0; padding: 0;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 12px;
+}
+.rail-tick { display: flex; align-items: center; padding: 6px 0 6px 24px; cursor: pointer; outline: none; }
+/* Only the width changes. Each tick keeps its height, so a dot grows sideways into a
+   line of the same weight. --delay is set per tick by section-rail.js. */
+.rail-bar {
+  display: block; height: 4px; width: 4px; border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 50%, transparent);
+  transition: width 550ms cubic-bezier(.45, .05, .2, 1) var(--delay, 0ms), background-color 300ms ease;
+}
+.rail-tick:hover .rail-bar, .rail-tick:focus-visible .rail-bar { background: var(--title); }
+.rail-tick[aria-current] .rail-bar { height: 6px; width: 6px; background: var(--accent); }
+.section-rail[data-expanded] .rail-bar { width: 16px; }
+.section-rail[data-expanded] .rail-tick:hover .rail-bar,
+.section-rail[data-expanded] .rail-tick:focus-visible .rail-bar { width: 20px; }
+.section-rail[data-expanded] .rail-tick[aria-current] .rail-bar { width: 28px; }
+
+/* The label, left of the tick. section-rail.js sets left/top to the tick's left edge
+   and vertical centre. */
+.rail-tip {
+  position: fixed; left: 0; top: 0; z-index: 200;
+  translate: -100% -50%; transform-origin: right center; pointer-events: none;
+  white-space: nowrap; border: 1px solid var(--rule); border-radius: 6px;
+  background: var(--tint); color: var(--title); padding: 6px 10px;
+  font: 400 10px/1.5 var(--font-label); letter-spacing: .22em; text-transform: uppercase;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / .25), 0 4px 6px -4px rgb(0 0 0 / .25);
+  opacity: 0; scale: .95;
+  transition: opacity 150ms ease-out, scale 150ms ease-out;
+}
+.rail-tip[data-open] { opacity: 1; scale: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .rail-bar { transition: background-color 300ms ease; }
+  .rail-tip { scale: 1; transition: opacity 150ms ease-out; }
+}
+@media print { .section-rail, .rail-tip { display: none !important; } }
+
 /* ---------- Code blocks ---------- */
 
 pre {

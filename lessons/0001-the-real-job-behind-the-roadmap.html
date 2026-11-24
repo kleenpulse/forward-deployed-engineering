@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -31,7 +32,7 @@
   <p>By the end you'll have three things: the 12 stages sorted into <em>core</em> and <em>specialist</em>, a map of your own work against them, and one project rewritten as a <em>deployment story</em> you can tell in an interview.</p>
 </div>
 
-<h2>1 · One customer, many capabilities</h2>
+<h2 id="one-customer-many-capabilities">1 · One customer, many capabilities</h2>
 
 <p>Palantir invented the title, so start with their definition. A regular software engineer, a "Dev", builds one capability that many customers use. A Forward Deployed Software Engineer, a "Delta", does the opposite: they <em>enable many capabilities for a single customer</em>.<span class="sn-ref"></span><span class="sidenote numbered">"While a traditional software engineer, or 'Dev,' focuses on creating a single capability that can be used for many customers, FDSEs focus on enabling many capabilities for a single customer." <a href="https://blog.palantir.com/a-day-in-the-life-of-a-palantir-forward-deployed-software-engineer-45ef2de257b1">Palantir Blog, 2020</a>.</span> The FDE embeds with that customer, sometimes in their office, sometimes in their Slack or on their infrastructure, and does whatever it takes: code, data pipelines, configuration. Then they carry what they learned back to the product team.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://posthog.com/blog/forward-deployed-engineer">PostHog, "WTF is a forward deployed engineer?"</a> Travel is often 20–50% of the time.</span></p>
 
@@ -45,7 +46,7 @@
   <p><strong>Hold both truths.</strong> Demand is real: FDE job ads grew 1,165% year over year in 2025, and the median advertised base salary was $173,816.<span class="sn-ref"></span><span class="sidenote numbered">Both figures from the <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry analysis</a>, Jan–Oct 2025 vs. the same period in 2024.</span> "You will never be unemployed again" isn't. No roadmap can promise that.</p>
 </div>
 
-<h2>2 · What the ads actually ask for</h2>
+<h2 id="what-the-ads-actually-ask-for">2 · What the ads actually ask for</h2>
 
 <p>Here's the evidence to check the roadmap against: the share of the 1,000 ads that mention each thing.</p>
 
@@ -69,7 +70,7 @@
 
 <p>Three things to notice. First, <strong>customers come first</strong>, ahead of any technology. Second, Python is in two thirds of the ads and TypeScript in a third. If you only know one, that's a gap to close later, not today.<span class="sn-ref"></span><span class="sidenote numbered">Same source. 60% of ads that name a level ask for 3–5 years, 20% for 6–8, 12% for 0–2, 8% for 9+.</span> Third, the ads name regulated industries most often when they name one: finance 24%, government and defense 18%, healthcare 17%, insurance 17%. But 79% of ads name no industry at all.</p>
 
-<h2>3 · Sort the roadmap</h2>
+<h2 id="sort-the-roadmap">3 · Sort the roadmap</h2>
 
 <p>For each stage of the roadmap, decide: does <em>every</em> FDE deployment need it, or only customers who are regulated or run their own hardware? Commit to an answer before you read the feedback. Guessing wrong and then reading why is the fastest way to learn it.</p>
 
@@ -107,7 +108,7 @@
 
 <p><strong>The pattern:</strong> 9 of the 12 stages are core. The three specialist ones (2, 6 and 8) are what make the roadmap look frightening, and they're the ones to leave for later. Meanwhile the most-asked-for skill, working with customers, sits at Stage 11.</p>
 
-<h2>4 · Map your own evidence</h2>
+<h2 id="map-your-own-evidence">4 · Map your own evidence</h2>
 
 <p>Now turn the roadmap on yourself. For each stage, rate the proof you could show a hiring manager <em>today</em>. Be strict: it's your private map, and an honest one tells you where to start.</p>
 
@@ -141,7 +142,7 @@
 
 <p><strong>How to read your map:</strong> most applicants can't show an eval or a discovery story at all, so a <em>strong</em> rating on Stage 10 or 11 is worth a lot. Close your core gaps before any specialist stage. The lessons follow the same order as the grid above, so the first stage you rated thin is a good place to start.</p>
 
-<h2>5 · Check yourself</h2>
+<h2 id="check-yourself">5 · Check yourself</h2>
 
 <p>Answer from memory. Don't scroll up first: a wrong answer you then correct sticks better than a right one you looked up.</p>
 
@@ -184,7 +185,7 @@
 }
 </script>
 
-<h2>6 · Build: one deployment story</h2>
+<h2 id="build-one-deployment-story">6 · Build: one deployment story</h2>
 
 <p>An FDE interview doesn't ask "what's your stack?". It asks "tell me about a time you shipped into a messy environment". A <strong>deployment story</strong> answers that in four parts: <em>who the customer was and what hurt</em>, <em>a constraint you didn't choose</em>, <em>what you shipped</em>, and <em>how you measured it</em>.</p>
 

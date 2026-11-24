@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>A search function on real Postgres that returns only the rows the asking user may see, cites every source, and abstains when nothing permitted matches well enough. You'll also be able to explain, in under a minute, why filtering the results <em>after</em> ranking is wrong. That explanation is what a customer's security team wants to hear.</p>
 </div>
 
-<h2>1 · The question every security review asks</h2>
+<h2 id="the-question-every-security-review-asks">1 · The question every security review asks</h2>
 
 <p>Picture the job. You're deploying a support agent for Acme. Your company also runs the same product for Globex, and both customers' documents sit in one shared database: a <em>multi-tenant</em> setup. Inside Acme, support staff may read the refund policy, but not HR's salary bands or finance's fraud review.</p>
 
@@ -46,7 +47,7 @@
   <li><strong>Document access:</strong> inside Acme, each document has an ACL, a list of the groups allowed to read it. Alice in support reads what <code>everyone</code> and <code>support</code> may read, and nothing else.</li>
 </ul>
 
-<h2>2 · Filter before you rank, not after</h2>
+<h2 id="filter-before-you-rank-not-after">2 · Filter before you rank, not after</h2>
 
 <p>The tempting design is the one most RAG tutorials show: search everything, take the top-k best matches, then drop the ones the user may not see. This is called post-filtering. It fails in two separate ways.</p>
 
@@ -65,7 +66,7 @@
 
 <p>The fix is to put the permission check <em>inside the same query that ranks</em>. SQL reads <code>WHERE</code> (and row-level security, below) before <code>ORDER BY</code> and <code>LIMIT</code>, so forbidden rows never compete for a top slot and never come back.</p>
 
-<h2>3 · Put the rule in the database with row-level security</h2>
+<h2 id="put-the-rule-in-the-database-with-row-level-security">3 · Put the rule in the database with row-level security</h2>
 
 <p><a href="0003-enterprise-identity-for-agents.html">Lesson 3</a> taught row-level security: default deny, table owners and superusers skipping it, and a transaction-local setting that tells the policy who is asking. Retrieval adds nothing new to that machinery. It just raises the stakes, because whatever the search returns goes straight into a prompt. Two reminders matter most here:<span class="sn-ref"></span><span class="sidenote numbered">Both from <a href="https://www.postgresql.org/docs/current/ddl-rowsecurity.html">PostgreSQL docs, "Row Security Policies"</a>.</span></p>
 <ul>
@@ -88,7 +89,7 @@ create policy tenant_and_groups on docs for select to app_user
   <p><strong>RLS or an explicit <code>WHERE</code>?</strong> Both filter before ranking, so both pass this lesson's checks. An explicit <code>WHERE tenant = $1 AND acl &amp;&amp; $2</code> is simpler and easy to read in a code review, but every query, including the one a teammate writes next year, must remember it. RLS can't be forgotten: Supabase recommends it because it "is always applied even as new queries and application logic is introduced in the future". The costs: every request needs a role and settings inside a transaction, a mistake shows up as silently empty results rather than an error, and Supabase warns that RLS is sensitive to latency when permissions come from another system. On a customer deployment with several engineers touching the code, RLS is usually the safer default.</p>
 </div>
 
-<h2>4 · Ranking: keywords now, vectors later</h2>
+<h2 id="ranking-keywords-now-vectors-later">4 · Ranking: keywords now, vectors later</h2>
 
 <p>The exercise ranks with Postgres full-text search, because PGlite runs real Postgres in-process with no setup but doesn't bundle pgvector, and real embeddings would need an API key. Three pieces do the work:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/textsearch-controls.html">PostgreSQL docs, "Controlling Text Search"</a>. <code>plainto_tsquery</code> puts an AND between the words; the exercise swaps it for OR so partial matches get a low score instead of no score.</span></p>
 <ul>
@@ -103,17 +104,17 @@ create policy tenant_and_groups on docs for select to app_user
 
 <p><strong>Hybrid search</strong> runs both and merges them. Anthropic's Contextual Retrieval post explains why: "embedding models excel at capturing semantic relationships, they can miss crucial exact matches", such as an error code like <code>TS-999</code>. Keyword ranking (BM25) finds the exact string. Combining contextual embeddings with contextual BM25 cut their top-20 retrieval failure rate by 49%, and adding a reranker took it to 67%.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/news/contextual-retrieval">Anthropic, "Introducing Contextual Retrieval"</a>, September 2024. The results are merged "using rank fusion techniques". Postgres's built-in <code>ts_rank</code> is a simpler frequency score, not BM25.</span> For permissions, the rule is simple: <em>both</em> halves must be filtered. With RLS on the table, both queries are filtered without anyone remembering to.</p>
 
-<h2>5 · Citations and abstention</h2>
+<h2 id="citations-and-abstention">5 · Citations and abstention</h2>
 
 <p><strong>Citations.</strong> Return each hit's id and title with its score, and show them with the answer. A person can check the answer against the source, and your logs record exactly which rows the model saw. A passage with no source can't be checked, and can't be traced back if it turns out to be one the user shouldn't have seen.</p>
 
 <p><strong>Abstention.</strong> If no permitted document clears the threshold, say so: "I couldn't find a document you have access to that answers this." Don't hand the model a weak match and hope. And don't say "there's an HR document about this, but you can't open it": that tells the user the document exists, which is itself a leak. With RLS you couldn't say it anyway, because the app never learns the forbidden rows were there.</p>
 
-<h2>6 · GraphRAG, in one paragraph</h2>
+<h2 id="graphrag-in-one-paragraph">6 · GraphRAG, in one paragraph</h2>
 
 <p>The roadmap names this stage "Permission-filtered RAG &amp; GraphRAG". Microsoft's GraphRAG builds an index by "extracting a knowledge graph out of raw text", then groups related entities into a "community hierarchy" and writes summaries for each community. It targets questions where "baseline RAG struggles to connect the dots" across many documents.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://microsoft.github.io/graphrag/">Microsoft, GraphRAG project page</a>.</span> You won't build one here. But carry one question into any GraphRAG project: a community summary is written from many documents, so who may read it? If even one of its sources is restricted, the summary needs that restriction too.</p>
 
-<h2>7 · Build it</h2>
+<h2 id="build-it">7 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0004-retrieval/</code>. <code>harness.ts</code> seeds two tenants (Acme and Globex), seven documents with ACLs and three users, and runs five checks. Its <code>sql()</code> helper records every document id that leaves the database, the way a log line or a prompt would see it. <code>start.ts</code> holds the bad version and your TODO.</p>
 
@@ -198,7 +199,7 @@ PASS  Every hit carries a citation
 
 <p>Notice checks 3 and 4 together: the same question, "salary bands", gives Hank (HR) the salary document and gives Alice an honest "nothing I can show you". The checks test both, so a search that blocks everything can't pass.</p>
 
-<h2>8 · Safe, or leaks data?</h2>
+<h2 id="safe-or-leaks-data">8 · Safe, or leaks data?</h2>
 
 <p>Each card is a retrieval design you might meet in a customer's codebase, or write yourself on a tired Friday. Decide whether it keeps forbidden data inside the database, then read why.</p>
 
@@ -230,7 +231,7 @@ PASS  Every hit carries a citation
 }
 </script>
 
-<h2>9 · Check yourself</h2>
+<h2 id="check-yourself">9 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -273,7 +274,7 @@ PASS  Every hit carries a citation
 }
 </script>
 
-<h2>10 · Explain it to the security lead</h2>
+<h2 id="explain-it-to-the-security-lead">10 · Explain it to the security lead</h2>
 
 <p>On a real deployment you'll be asked this out loud, often by someone who doesn't write code. Write the answer you'd give Acme's security lead, who has just asked: "How do I know your agent won't show my support staff HR documents?" It saves as you type.</p>
 

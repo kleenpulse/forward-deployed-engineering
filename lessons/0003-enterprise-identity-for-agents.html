@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>By the end you can explain to a customer's IT team, in their own words, how their staff will sign in, how accounts are created and removed, and exactly what the agent can see. You will also have written a Postgres row-level security policy that stops an agent's query from reading another department's or another customer's rows, checked by seven automatic tests.</p>
 </div>
 
-<h2>1 · Your login versus their login</h2>
+<h2 id="your-login-versus-their-login">1 · Your login versus their login</h2>
 
 <p>You already know how login works in an app you build. You keep a users table, hash passwords, set a session cookie, rotate refresh tokens, and a route guard checks the session before a page loads. You own every part of it.</p>
 
@@ -53,7 +54,7 @@
 
 <p>The rest of the lesson takes these one at a time, then you build the fourth one for real.</p>
 
-<h2>2 · SSO: SAML or OIDC, and what IT will ask you for</h2>
+<h2 id="sso-saml-or-oidc-and-what-it-will-ask-you-for">2 · SSO: SAML or OIDC, and what IT will ask you for</h2>
 
 <p>With SSO, your app stops checking passwords. It sends the person to the customer's identity provider, the provider signs them in, and it sends your app a signed statement saying who they are. In SAML's terms, the identity provider is "the entity providing the identities, including the ability to authenticate a user", and your app is the <em>service provider</em>, "the entity providing the service, typically in the form of an app".<span class="sn-ref"></span><span class="sidenote numbered">Both definitions from <a href="https://developer.okta.com/docs/concepts/saml/">Okta Developer, "Understand SAML"</a>.</span></p>
 
@@ -78,7 +79,7 @@
 
 <p>When an ID token arrives, a library validates it, but you should know what it checks. The token claims that matter most are <code>iss</code> (who issued it), <code>sub</code> (who it is about), <code>aud</code> (who it is for) and <code>exp</code> (when it expires). The issuer from the discovery document "MUST exactly match the value of the iss (issuer) Claim", and the token must be rejected if its audience does not include your client ID.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openid.net/specs/openid-connect-core-1_0.html#IDTokenValidation">OpenID Connect Core 1.0, section 3.1.3.7</a>, "ID Token Validation".</span> Then key the person in your database by issuer plus <code>sub</code>, not by email. The spec defines <code>sub</code> as "a locally unique and never reassigned identifier within the Issuer for the End-User". An email address can change or be reused for a new hire.</p>
 
-<h2>3 · SCIM: the day someone leaves</h2>
+<h2 id="scim-the-day-someone-leaves">3 · SCIM: the day someone leaves</h2>
 
 <p>SSO only acts at sign-in. Say Lee leaves on Friday and IT disables Lee in the identity provider. Lee can't start a new sign-in. But the session cookie and refresh token your app already gave Lee are yours, not the identity provider's, so they keep working. An agent job running on Lee's behalf keeps running too. Even Microsoft's own sign-out ends the session in one app while the user "may still be signed in to other applications".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://learn.microsoft.com/en-us/entra/identity-platform/v2-protocols-oidc#single-sign-out">Microsoft Learn, OIDC on the Microsoft identity platform, "Single sign-out"</a>. That's why it offers a front-channel logout address that each app must handle itself.</span> Closing that gap is what SCIM is for.</p>
 
@@ -92,7 +93,7 @@
 
 <p>So when your SCIM endpoint receives <code>active: false</code>, a database flag isn't enough. End their sessions, revoke their refresh tokens, stop every agent job running for them, and make sure the database stops returning their rows. The exercise checks that last part: Lee is in the data with <code>active = false</code>.</p>
 
-<h2>4 · RBAC: roles, not people</h2>
+<h2 id="rbac-roles-not-people">4 · RBAC: roles, not people</h2>
 
 <p>RBAC is the plain idea that "each user is assigned one or more roles, and each role is assigned one or more privileges".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://csrc.nist.gov/projects/role-based-access-control">NIST, Role Based Access Control project</a>. The NIST model became an American National Standard in 2004.</span> Nobody gets permissions one by one. In an enterprise, the roles usually come from the customer's groups. IT assigns a group to your app in the identity provider, and Entra provisions or deprovisions people "based on whether they're members of a group that's assigned to the application".<span class="sn-ref"></span><span class="sidenote numbered">Same <a href="https://learn.microsoft.com/en-us/entra/identity/app-provisioning/how-provisioning-works">Entra provisioning page</a>, "Assignment-based scoping".</span> Your job is a short mapping: group <code>Finance-Staff</code> becomes role <code>member</code> in the Finance department, and group <code>IT-Admins</code> becomes <code>admin</code>. Keep it to a few roles that IT can understand without you.</p>
 
@@ -100,7 +101,7 @@
   <p><strong>One word, two meanings.</strong> In this lesson "role" means two different things. An <em>RBAC role</em> (member, admin) is a business idea, stored as data in your users table. A <em>database role</em> is the identity a connection uses inside Postgres. The agent uses one database role, <code>agent</code>, for everyone. The human's RBAC role is something the database looks up.</p>
 </div>
 
-<h2>5 · Enforce it in the database: row-level security</h2>
+<h2 id="enforce-it-in-the-database-row-level-security">5 · Enforce it in the database: row-level security</h2>
 
 <p>An agent composes queries for you, through tools you write. If the only thing that keeps Finance's agent out of HR's files is a <code>WHERE</code> clause in each tool, or a line in the prompt, one forgotten clause leaks everything. Row-level security moves that filter into Postgres itself, so it applies to every query on the table, whoever wrote it.</p>
 
@@ -121,7 +122,7 @@
 
 <p>Keep the setting transaction-local. Servers reuse database connections from a connection pool, so a setting that outlives its transaction could carry Ana's id into Ben's next request. And the id must come from the token your server verified, never from anything the model wrote.</p>
 
-<h2>6 · The agent twist: act as the human, not as a god</h2>
+<h2 id="the-agent-twist-act-as-the-human-not-as-a-god">6 · The agent twist: act as the human, not as a god</h2>
 
 <p>The quick way to wire up an agent is one service account that can read everything, plus a prompt that says what not to show. That agent can reach the sum of everyone's data, and one clever question or one buggy tool is enough to leak it. (In Lesson 2, Northfield's pilot read order data through a service account. That works while every user may see every row it reads. Once different people may see different rows, the agent needs to know who it is working for.) The safer rule: <strong>the agent acts with the signed-in person's permissions, and each tool gets a token that can do only that tool's job.</strong></p>
 
@@ -146,7 +147,7 @@
   <li>Postgres applies the RLS policy and returns only rows Ana may see. SCIM keeps her department, role and <code>active</code> flag up to date, so the policy always checks today's facts.</li>
 </ol>
 
-<h2>7 · Sort the requirements</h2>
+<h2 id="sort-the-requirements">7 · Sort the requirements</h2>
 
 <p>Customers rarely say "we need SCIM". They describe what they want. Sort each requirement into the piece that delivers it. Commit to an answer before you read the feedback.</p>
 
@@ -178,7 +179,7 @@
 }
 </script>
 
-<h2>8 · Build it: a policy that keeps the agent in its lane</h2>
+<h2 id="build-it-a-policy-that-keeps-the-agent-in-its-lane">8 · Build it: a policy that keeps the agent in its lane</h2>
 
 <p>Now write the policy yourself. The exercise runs real Postgres inside the script with PGlite, so you don't need a database server, an account or a key. From the course folder, run:</p>
 
@@ -288,7 +289,7 @@ PASS  No user set (agent forgot) sees nothing          got []
 
 <p class="small">Going further: the agent can only read here. If you let it write, add <code>grant insert on docs to agent</code> and a <code>for insert</code> policy with a <code>WITH CHECK</code> expression, so it can't create a document in another department. Test it the same way.</p>
 
-<h2>9 · Check yourself</h2>
+<h2 id="check-yourself">9 · Check yourself</h2>
 
 <p>Answer from memory. A wrong answer you then correct sticks better than a right one you looked up. The last two questions come from Lessons 1 and 2.</p>
 
@@ -331,7 +332,7 @@ PASS  No user set (agent forgot) sees nothing          got []
 }
 </script>
 
-<h2>10 · Write it for IT</h2>
+<h2 id="write-it-for-it">10 · Write it for IT</h2>
 
 <p>Now the other half of the win: the note you'd send a customer's IT team before the setup call. Imagine the customer is Acme, on Microsoft Entra ID, and the agent answers questions from Acme's documents. Write it for an IT admin, not a developer: they know SAML and SCIM better than you, but they don't know your app. It saves as you type.</p>
 

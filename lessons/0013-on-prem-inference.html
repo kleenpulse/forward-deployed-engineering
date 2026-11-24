@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>A sizing and acceptance script, in TypeScript, that picks which of four versions of an open-weight model Torvik runs. It does the memory sums for weights and KV cache on Torvik's two GPUs, writes the exact <code>vllm serve</code> command with nothing left to defaults, and refuses any version that got a single golden-set case wrong or is too slow at the busiest hour. Then the one-page sizing memo Mats and Ingrid sign off.</p>
 </div>
 
-<h2>1 · Four jobs the provider used to do</h2>
+<h2 id="four-jobs-the-provider-used-to-do">1 · Four jobs the provider used to do</h2>
 
 <p>When the agent called a model provider's API, four questions had answers before you asked them. On Torvik's high side, they're yours:</p>
 <table>
@@ -46,7 +47,7 @@
 </table>
 <p>The roadmap calls this stage "edge and on-prem" because the same questions come in two sizes. <strong>On-prem</strong> is Torvik's case: a server in a customer's machine room, serving many people. <strong>Edge</strong> is a device near the work, such as a laptop on a ship with no connection. For that size the usual tool is llama.cpp, whose "main goal … is to enable LLM (and MLLM) inference with minimal setup and state-of-the-art performance on a wide range of hardware - locally and in the cloud". It "requires the model to be stored in the GGUF file format".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/ggml-org/llama.cpp">llama.cpp README</a> and <a href="https://github.com/ggml-org/llama.cpp/blob/master/docs/models.md">docs/models.md</a>, checked November 2026. Ollama, built on it, describes itself as a way to "Start building with open models. Access the latest releases locally or in the cloud with complete privacy" (<a href="https://github.com/ollama/ollama">Ollama README</a>).</span> The questions are the same on a laptop, and the numbers are just smaller. Today uses the bigger size, with vLLM, an open-source model server built for GPUs and many users.</p>
 
-<h2>2 · Open weights, but not open for every use</h2>
+<h2 id="open-weights-but-not-open-for-every-use">2 · Open weights, but not open for every use</h2>
 
 <p>"Open-weight" means you can download the weights. It doesn't mean you may use them for anything. Torvik builds sonar parts for navies, so the first filter isn't technical.</p>
 <ul>
@@ -57,7 +58,7 @@
 <p>Two more things belong in the same conversation. A licence isn't the only rule: export controls and Torvik's contracts apply too. And the law around AI may not work the way you'd guess. The EU AI Act "does not apply to AI systems where and in so far they are placed on the market, put into service, or used with or without modification exclusively for military, defence or national security purposes".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689">Regulation (EU) 2024/1689</a> (the AI Act), Article 2(3). Norway is outside the EU but in the EEA. Whether and when the Act applies there is another question for Torvik's lawyers.</span> Note the word "exclusively". A support agent that also helps Torvik's civilian customers may not be exclusive. Your job is to bring these questions up early, with the model card and the licence text in hand, and to write down who answered them.</p>
 <p>Torvik's lawyers cleared one family: Skerry, an Apache 2.0 model. (Skerry is made up for this course. It's shaped like Qwen3-32B, so its numbers are realistic.) Four versions of it crossed the gap in Lesson 12's bundles.</p>
 
-<h2>3 · Will it fit? Weights, then the KV cache</h2>
+<h2 id="will-it-fit-weights-then-the-kv-cache">3 · Will it fit? Weights, then the KV cache</h2>
 
 <p>NVIDIA's guide to inference names "the two main contributors to the GPU LLM memory requirement": "model weights and the KV cache".<span class="sn-ref"></span><span class="sidenote numbered">NVIDIA Technical Blog, <a href="https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/">"Mastering LLM Techniques: Inference Optimization"</a> (17 November 2023).</span></p>
 
@@ -90,7 +91,7 @@
 </table>
 <p>The full-precision model doesn't fit for 16 people. It does fit for one conversation at a time, and that's all a reference run needs (section 5).</p>
 
-<h2>4 · Serving it: every setting on the command line</h2>
+<h2 id="serving-it-every-setting-on-the-command-line">4 · Serving it: every setting on the command line</h2>
 
 <p>vLLM "provides an HTTP server that implements OpenAI's Completions API, Chat API, and more", and its own example points the official OpenAI client at <code>base_url="http://localhost:8000/v1"</code>.<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/">"OpenAI-Compatible Server"</a>. The same page warns that <code>--api-key</code> doesn't cover every endpoint: "Do not rely on <code>--api-key</code> alone to secure vLLM." On the high side, Lesson 12's NetworkPolicy decides who can reach port 8000.</span> That's why the agent's code barely changes: it calls <code>http://llm.torvik.internal:8000/v1</code>, the address on Lesson 12's egress list. What changes is the command that starts the server. Each memory sum in section 3 is a setting, and anything you don't set takes vLLM's default, not your plan.</p>
 <table>
@@ -108,13 +109,13 @@
 
 <p><strong>Read the start-up log.</strong> vLLM tells you what it could fit. One line gives "an estimate of how many requests can be served concurrently if each request requires the specified number of tokens".<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/serving/parallelism_scaling/">"Parallelism and Scaling"</a>, on the log line <span class="no-terms">"Maximum concurrency for 40,960 tokens per request: 15.70x"</span>.</span> If even one request doesn't fit, vLLM refuses to start: "To serve at least one request with the model's max seq len (…), (… GiB KV cache is needed, which is larger than the available KV cache memory (… GiB)."<span class="sn-ref"></span><span class="sidenote numbered">vLLM source, <a href="https://github.com/vllm-project/vllm/blob/main/vllm/v1/core/kv_cache_planning.py">vllm/v1/core/kv_cache_planning.py</a>. Note GiB: vLLM counts in 2^30 bytes, while datasheets and file sizes usually count in GB, 10^9 bytes.</span> The opposite case is worse: a server that starts fine and has room for 11 of the 16 conversations. Nothing fails. The other five just wait.</p>
 
-<h2>5 · Is it still good? The golden set and the busy hour</h2>
+<h2 id="is-it-still-good-the-golden-set-and-the-busy-hour">5 · Is it still good? The golden set and the busy hour</h2>
 
 <p><strong>Against what?</strong> In <a href="0008-evals-on-customer-data.html">Lesson 8</a> you compared a new version of the agent with the one in production. Here, the full-precision model is the reference. It can't serve 16 people on gpu-01, but it can answer the golden set one conversation at a time. Then each smaller version answers the same 12 cases, three times each, through the server exactly as it'll be configured. That means the same flags, so a missing tool parser shows up here and not on the first day of production.</p>
 <p><strong>Averages hide the case that matters.</strong> The study above reports accuracy averaged over benchmarks. Your customer reads one answer at a time. On Torvik's golden set, the INT4 version scored higher than the reference on average: 33 of 36 runs passed, against 32. But in one run of T-07 it gave the torque for the TR-40's mounting bolts as 2.58 Nm instead of 2.85. Lesson 8's rule catches that: a case that passed every run before and fails any run now is a regression, whatever the average says. A wrong torque on a sonar mount is the kind of mistake Torvik's engineers would act on.</p>
 <p><strong>Fast alone isn't fast.</strong> Measure speed the way users feel it. "Time to first token (TTFT) measures how long you wait before seeing the model's output", and it "generally includes request queuing time, prefill time, and network latency". Load changes it: "As the number of concurrent requests increases, total system TPS increases while TPS per user decreases as latency increases."<span class="sn-ref"></span><span class="sidenote numbered">NVIDIA NIM, <a href="https://docs.nvidia.com/nim/benchmarking/llm/metrics">"LLM Inference Benchmarking: Metrics"</a>. TPS is tokens per second.</span> So run a load test at Torvik's peak, 16 conversations with long prompts, and read the p95, not the average. Mats tried the FP8 model with a BF16 cache: 0.51 s alone, 6.58 s at 16. vLLM had room for 11 conversations, so the rest queued behind them.</p>
 
-<h2>6 · Build it</h2>
+<h2 id="build-it">6 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0013-inference/</code>. The top of <code>harness.ts</code> describes gpu-01, Torvik's needs, the four Skerry versions with their <code>config.json</code> fields, the reference grades, and Mats's log of last week's trials. It also has a stand-in for vLLM: it has no GPU and no model, but it starts from your command line using vLLM's rules and messages, then plays back what Torvik measured. You write three functions: <code>fit()</code>, <code>serveCommand()</code> and <code>accept()</code>.</p>
 
@@ -205,7 +206,7 @@ Mats's start-up command for gpu-01:
 
 <p>Try three experiments in a copy of <code>solution.ts</code>. Replace <code>c.num_key_value_heads</code> with <code>c.num_attention_heads</code>: the cache looks 8 times bigger, checks 1 and 2 fail, and nothing fits at all. Undo that, and delete <code>"--kv-cache-dtype", s.kv_cache_dtype,</code> from the command: only check 3 fails, because the server you sized isn't the server that starts. Undo that too, and make <code>accept()</code> skip the regressions: only check 6 fails, and the search ships the INT4 version with the wrong torque.</p>
 
-<h2>7 · May Torvik run it?</h2>
+<h2 id="may-torvik-run-it">7 · May Torvik run it?</h2>
 
 <p>Before any sizing, Torvik's lawyers will ask you about each model you put forward. For each card, decide whether you can go ahead, or must stop and get a written answer first. (These are the licences as they read in November 2026. Check again before you rely on them.)</p>
 
@@ -233,7 +234,7 @@ Mats's start-up command for gpu-01:
 }
 </script>
 
-<h2>8 · Check yourself</h2>
+<h2 id="check-yourself">8 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -292,7 +293,7 @@ Mats's start-up command for gpu-01:
 }
 </script>
 
-<h2>9 · Write the sizing memo</h2>
+<h2 id="write-the-sizing-memo">9 · Write the sizing memo</h2>
 
 <p>Mats runs gpu-01, and Ingrid signs off what runs on the high side. Neither of them was in the room for your tests. Write the memo they'll keep with the system's records: what runs, why it fits, and how to tell when it stops fitting. It saves as you type.</p>
 

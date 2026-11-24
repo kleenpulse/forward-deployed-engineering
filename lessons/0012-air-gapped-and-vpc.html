@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>An import gate, in TypeScript and Postgres, that decides whether a release bundle carried across the gap gets installed: a signature checked against a key pinned on the inside, every file hashed, nothing unlisted, never an older version, no setting that points outside, the database migration and the version switch in one transaction, and a log the accreditor can read. Then the one-page network and release plan Torvik's security team asked for.</p>
 </div>
 
-<h2>1 · Four places the agent can run</h2>
+<h2 id="four-places-the-agent-can-run">1 · Four places the agent can run</h2>
 
 <p>Until now the agent ran in your company's cloud and called a model provider over the internet. <a href="0011-pii-guardrails.html">Lesson 11</a> kept personal data out of those calls. Some customers go further: nothing leaves at all. Job ads show where: in one analysis of 1,000 FDE ads, government and defence made up 18% of the ads that name an industry, with "air-gapped systems, FedRAMP compliance, classified environments" as the norm.<span class="sn-ref"></span><span class="sidenote numbered">Bloomberry, <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">"I analyzed 1,000 forward deployed engineer jobs"</a>. The same figure is in the <a href="../reference/fde-roadmap-map.html">roadmap reference</a>.</span> Banks and hospitals ask for parts of it too. There are four common setups:</p>
 <table>
@@ -46,7 +47,7 @@
 </table>
 <p>Read the last column again. Each step down the table takes a tool away from you: first the provider's dashboard, then your own logs, then your access. The work moves from "fix it in production" to "make it right before it ships, and write down how they fix it without you".</p>
 
-<h2>2 · A VPC: a private road to the model</h2>
+<h2 id="a-vpc-a-private-road-to-the-model">2 · A VPC: a private road to the model</h2>
 
 <p>The middle option is the most common one. The customer runs the agent in their own VPC, and calls the model service their cloud sells: Amazon Bedrock on AWS, the model service Google now calls Gemini Enterprise Agent Platform (formerly Vertex AI), or Microsoft Foundry on Azure. The request never touches the public internet. AWS: "You can access Amazon Bedrock as if it were in your VPC, without the use of an <span class="no-terms">internet gateway</span>, NAT device, VPN connection, or Direct Connect connection."<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://docs.aws.amazon.com/bedrock/latest/userguide/vpc-interface-endpoints.html">"Use interface VPC endpoints (AWS PrivateLink) to create a private connection between your VPC and Amazon Bedrock"</a>. Also: "Instances in your VPC don't need public IP addresses to access Amazon Bedrock."</span> Google's version lets customers reach the service with "their own internal IP addresses … without leaving their VPC networks".<span class="sn-ref"></span><span class="sidenote numbered">Google Cloud, <a href="https://docs.cloud.google.com/gemini-enterprise-agent-platform/machine-learning/general/psc-endpoints">"About accessing Gemini Enterprise Agent Platform services through Private Service Connect endpoints"</a>, updated November 2026. The old Vertex AI addresses redirect here.</span> Microsoft's network isolation guide starts from the same need: "Major enterprises require network isolation to secure their resources from unauthorized access, tampering, or leakage of data and models."<span class="sn-ref"></span><span class="sidenote numbered">Microsoft, <a href="https://learn.microsoft.com/en-us/azure/foundry/how-to/configure-private-link">"How to configure network isolation for Microsoft Foundry"</a>.</span></p>
 
@@ -59,7 +60,7 @@
 </ul>
 <p>So "it's in our Azure" or "it's in our AWS" is where the conversation starts, not where it ends. For each setup, find the page that says where inference runs and what is kept, quote it with the date you read it, and put it in front of the customer's security team. These pages change: Bedrock's retention setting is newer than many of the security reviews that cite Bedrock.</p>
 
-<h2>3 · Default deny, then find what calls out</h2>
+<h2 id="default-deny-then-find-what-calls-out">3 · Default deny, then find what calls out</h2>
 
 <p>A VPC doesn't stop traffic going out by itself. Two defaults catch people:</p>
 <ul>
@@ -84,7 +85,7 @@ spec:
 </ul>
 <p>Fix each one in the build, not with an exception in the firewall: bake the model and every package into the image, point telemetry at the customer's collector, turn update checks off. Write the final list of allowed destinations into the plan, with a reason for each.</p>
 
-<h2>4 · Air-gapped: nothing crosses by itself</h2>
+<h2 id="air-gapped-nothing-crosses-by-itself">4 · Air-gapped: nothing crosses by itself</h2>
 
 <p>An air gap is stricter than "egress denied". NIST's definition: "An interface between two systems at which (a) they are not connected physically and (b) any logical connection is not automated (i.e., data is transferred through the interface only manually, under human control)."<span class="sn-ref"></span><span class="sidenote numbered">NIST CSRC glossary, <a href="https://csrc.nist.gov/glossary/term/air_gap">"air gap"</a>, from CNSSI 4009 and RFC 4949.</span> Torvik's staff call the connected network the low side and the closed one the high side. Data crosses in two ways. By hand, on approved media, as Ingrid does. Or through a cross domain solution, "a form of controlled interface that provides the ability to manually and/or automatically access and transfer information between different security domains", which is often built on a data diode, a device "that allows data to travel only in one direction".<span class="sn-ref"></span><span class="sidenote numbered">NIST CSRC glossary, <a href="https://csrc.nist.gov/glossary/term/cross_domain_solution">"cross domain solution (CDS)"</a> and <a href="https://csrc.nist.gov/glossary/term/data_diode">"data diode"</a>.</span> One direction means your releases can go in, and the logs don't come back out to you.</p>
 
@@ -106,7 +107,7 @@ spec:
 </table>
 <p>That last row is today's exercise.</p>
 
-<h2>5 · Carrying a release across</h2>
+<h2 id="carrying-a-release-across">5 · Carrying a release across</h2>
 
 <p>A disk that arrives on the high side is a download from an untrusted mirror: you know what it should hold, but not what it does. The Update Framework (TUF), a specification for secure software updates, lists the attacks an updater must stop. Four of them map straight onto a disk in Ingrid's hand:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://theupdateframework.github.io/specification/latest/#goals-to-protect-against-specific-attacks">The Update Framework Specification</a>, version 1.0.37, section 1.5.2, "Goals to protect against specific attacks".</span></p>
 <table>
@@ -127,7 +128,7 @@ spec:
 
 <p>You won't build this gate from scratch in a real deployment. Zarf, an open-source tool for air gaps, lets you "package the parts of the internet your app needs into a single compressed file to be installed without connectivity", and can "Create and verify package signatures with cosign".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.zarf.dev/">"What is Zarf?"</a>, Zarf documentation.</span> Sigstore's cosign verifies "with an on-disk public key provided by the signer": <code>cosign verify --key cosign.pub</code>.<span class="sn-ref"></span><span class="sidenote numbered">Sigstore, <a href="https://docs.sigstore.dev/cosign/verifying/verify/">"Verifying Signatures"</a>.</span> But you have to know what such a tool checks, because Torvik's accreditor will ask you, and some customers will want their own checks on top. Building one is the fastest way to know.</p>
 
-<h2>6 · Build it</h2>
+<h2 id="build-it">6 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0012-air-gap/</code>. The top of <code>harness.ts</code> describes a bundle, the key pinned on the high side, the <code>deployment</code> and <code>schema_migrations</code> tables, and the <code>import_log</code>. The harness writes nine bundles to <code>exercises/0012-air-gap/media/</code> on every run, one for each disk Ingrid carries across in December. Open a few before you start. You write one function: <code>importBundle(dir)</code>.</p>
 
@@ -244,7 +245,7 @@ Running now: 1.11.2. Migrations: 0001, 0002, 0003, 0004, 0005, 0006.</code></pre
 
 <p>Try three experiments in a copy of <code>solution.ts</code>. Replace <code>compareVersions(manifest.version, running.version) &lt;= 0</code> with <code>manifest.version &lt;= running.version</code>: 1.10.0 is refused as "older" than 1.9.2, nothing installs, and four checks fail. Undo that, and make <code>inside()</code> return <code>url.includes(INSIDE)</code>: only check 6 fails, because the crash reporter's URL gets through. Undo that too, and replace <code>db.transaction(async (tx) =&gt; { … })</code> with a plain function called on <code>db</code>: only check 1 fails. Migration 0005 stays in place after 0006 breaks, and the next install has to work around half a release.</p>
 
-<h2>7 · On the list, or fixed in the build?</h2>
+<h2 id="on-the-list-or-fixed-in-the-build">7 · On the list, or fixed in the build?</h2>
 
 <p>You ran the agent in a test copy of Torvik's network with all egress denied, and read what tried to get out. Each card is one connection. Decide whether it goes on the allowed list, or gets fixed in the build so it never tries again.</p>
 
@@ -274,7 +275,7 @@ Running now: 1.11.2. Migrations: 0001, 0002, 0003, 0004, 0005, 0006.</code></pre
 }
 </script>
 
-<h2>8 · Check yourself</h2>
+<h2 id="check-yourself">8 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -333,7 +334,7 @@ Running now: 1.11.2. Migrations: 0001, 0002, 0003, 0004, 0005, 0006.</code></pre
 }
 </script>
 
-<h2>9 · Write Torvik's plan</h2>
+<h2 id="write-torviks-plan">9 · Write Torvik's plan</h2>
 
 <p>Torvik's security team won't approve the agent until they have a network and release plan they can check line by line. Write it for them: people who read firewall rules all day, but don't know your product. It saves as you type.</p>
 

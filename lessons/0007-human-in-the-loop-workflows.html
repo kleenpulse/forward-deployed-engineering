@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>A returns workflow in Postgres and TypeScript that stops at an approval gate, accepts a decision only from a real returns manager, picks up where it left off after days or after a crash, never creates a return twice (even when the legacy system has no idempotency key), lets only one of two simultaneous runs do the work, and expires on its own when nobody decides in time.</p>
 </div>
 
-<h2>1 · Some actions need a person</h2>
+<h2 id="some-actions-need-a-person">1 · Some actions need a person</h2>
 
 <p>An EPAM job ad for an FDE lead puts it in one line: "Design for failure in the agent loop: retries, model fallbacks, cost limits and human-in-the-loop on consequential actions".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://careers.epam.com/en/vacancy/forward-deployed-engineer-chief-role-bltjgsnasgg42nfftvp_en">EPAM's Forward Deployed Engineer job ad</a>, as of November 2026.</span> The MCP specification says the same about tools: "there <strong>SHOULD</strong> always be a human in the loop with the ability to deny tool invocations".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools#user-interaction-model">MCP 2026-07-28, "Tools", User Interaction Model</a>. Under "Security Considerations", clients SHOULD also "Prompt for user confirmation on sensitive operations" and "Log tool usage for audit purposes".</span> Anthropic's guide to agents describes agents that "pause for human feedback at checkpoints or when encountering blockers".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic, "Building effective agents"</a>, section "Agents".</span></p>
 
@@ -40,7 +41,7 @@
 
 <p>In the EU there is a legal side too. For AI systems the EU AI Act classes as high-risk, Article 14 requires that people can "effectively" oversee them, can "disregard, override or reverse" their output, and can stop them "through a 'stop' button or a similar procedure".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://artificialintelligenceact.eu/article/14/">EU AI Act, Article 14, "Human Oversight"</a>, paragraphs 1 and 4(d) and 4(e). Whether a system is high-risk is a legal question for the customer's lawyers, not for you.</span> A returns tool is probably not high-risk, but the customer's legal team may ask how your design would meet this anyway.</p>
 
-<h2>2 · "The user said yes in the chat" is not a gate</h2>
+<h2 id="the-user-said-yes-in-the-chat-is-not-a-gate">2 · "The user said yes in the chat" is not a gate</h2>
 
 <p>The first version most people build lets the agent ask "shall I go ahead?" in the conversation, and calls the reply an approval. For small, reversible actions by the person who asked, that is often fine: it is what a confirmation prompt is for. For Acme's rule it is not, for three reasons:</p>
 <ul>
@@ -51,7 +52,7 @@
 
 <p>The request is part of the gate too. Maria decides from what the card says, so it must say what will happen, in numbers: the amount, the order, the customer, the order's total, the reason, and who asked.</p>
 
-<h2>3 · A workflow that can wait for days</h2>
+<h2 id="a-workflow-that-can-wait-for-days">3 · A workflow that can wait for days</h2>
 
 <p>You can't keep a function running for two days. Servers restart for deploys, and long-running requests time out. So the workflow has to save where it is, stop, and continue later from the saved state, possibly on a different machine. That is a durable workflow. Every serious framework does the same thing in its own words:</p>
 
@@ -73,7 +74,7 @@
   <p><strong>Where MCP fits.</strong> An MCP tool call can't stay open for two days. The 2026-07-28 revision moved long-running work into an official tasks extension: "Some operations — CI pipelines, batch processing, human approvals — take seconds, minutes, or longer. MCP Tasks let servers return a durable handle instead of blocking".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/extensions/tasks/overview">MCP Tasks extension, overview</a>. For quick questions to the user in the middle of a call, MCP has elicitation: "a standardized way for servers to request additional information from users through the client" (<a href="https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation">MCP 2026-07-28, "Elicitation"</a>).</span> So the tool starts the workflow and returns a handle at once. The workflow itself lives behind it, in a database.</p>
 </div>
 
-<h2>4 · Idea one: save every step, and replay</h2>
+<h2 id="idea-one-save-every-step-and-replay">4 · Idea one: save every step, and replay</h2>
 
 <p>Write the workflow as plain code from top to bottom, and wrap each step in a helper. The helper looks in the <code>steps</code> table first. If the step already ran, it returns the saved result. If not, it runs the step and saves the result. Every time <code>run()</code> is called, the code starts again from the top, and finished steps cost nothing. That is replay.</p>
 
@@ -91,7 +92,7 @@ async function step&lt;T&gt;(id: string, name: string, fn: () =&gt; Promise&lt;T
 
 <p>Replay has one rule: the code must take the same path every time it runs. Temporal: "A Workflow Definition must be deterministic to support replay", so API calls, LLM calls and database queries go in Activities, which "execute outside the replay path and are automatically retried".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.temporal.io/workflow-definition#deterministic-constraints">Temporal docs, "Deterministic constraints"</a>.</span> In your version, that means anything that can differ between runs goes inside a step, so its saved result is reused: the order lookup, the clock when the request was made, a random id. If the workflow reads <code>now()</code> outside a step to decide which branch to take, a replay can take a different branch than the first run did.</p>
 
-<h2>5 · Idea two: the gap between "done" and "saved"</h2>
+<h2 id="idea-two-the-gap-between-done-and-saved">5 · Idea two: the gap between "done" and "saved"</h2>
 
 <p>Look at the comment in <code>step()</code> again. <code>CreateReturn</code> succeeds, the process dies before the insert, and on restart the step runs again. Temporal describes exactly this case: "The Activity function completes successfully, but the Worker crashes just before it notifies the Temporal Service." Its answer: "Temporal recommends that Activities be idempotent."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.temporal.io/activity-definition#idempotency">Temporal docs, "Activity idempotency"</a>. It suggests "a combination of the Workflow Run ID and the Activity ID as an idempotency key".</span> LangGraph says the same about its interrupts, which re-run the node that paused: "side effects called before <code>interrupt</code> should (ideally) be idempotent", so "Place side effects after <code>interrupt</code> calls".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.langchain.com/oss/python/langgraph/interrupts">LangGraph docs, "Interrupts"</a>, section on side effects.</span></p>
 
@@ -116,7 +117,7 @@ await step(id, "tell_customer_done", () =&gt; notifier.send(order.customer,
 
 <p>The same gap appears when you save to your database and then send a message: "if a service sends a message after committing the transaction there's no guarantee that it won't crash before sending the message." The transactional outbox pattern stores the message in the same transaction, and a separate process sends it later. Even then, "The Message relay might publish a message more than once", so the receiver still needs a dedupe key.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://microservices.io/patterns/data/transactional-outbox.html">microservices.io, "Pattern: Transactional outbox"</a>.</span></p>
 
-<h2>6 · Idea three: one worker at a time</h2>
+<h2 id="idea-three-one-worker-at-a-time">6 · Idea three: one worker at a time</h2>
 
 <p>Maria double-clicks Approve. The approval app calls <code>run()</code> twice, a few milliseconds apart. Both calls read the workflow, both see "waiting", both go on. That is a race condition, and checking the status first doesn't fix it, because both checks happen before either run writes anything.</p>
 
@@ -138,13 +139,13 @@ if (!claim.rows.length) {
 
 <p>With many workflows waiting, workers usually pick the next one from a queue table. Postgres's <code>FOR UPDATE SKIP LOCKED</code> exists for that: "any selected rows that cannot be immediately locked are skipped", which "can be used to avoid lock contention with multiple consumers accessing a queue-like table".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.postgresql.org/docs/current/sql-select.html#SQL-FOR-UPDATE-SHARE">PostgreSQL 19, SELECT, "The Locking Clause"</a>.</span></p>
 
-<h2>7 · Idea four: nobody waits forever</h2>
+<h2 id="idea-four-nobody-waits-forever">7 · Idea four: nobody waits forever</h2>
 
 <p>Maria goes on holiday. Without a deadline, the customer waits forever and nobody notices. Anthropic recommends "stopping conditions (such as a maximum number of iterations) to maintain control" for agents, and the same goes for a gate.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/engineering/building-effective-agents">Anthropic, "Building effective agents"</a>.</span> Acme's rule: no valid decision within 48 hours, and the request expires. The customer is told nothing was refunded, and a click that arrives later is ignored.</p>
 
 <p>Two details make the deadline reliable. Compute it from the saved request time, not from "now", so every replay gets the same answer. And something has to wake the workflow when the deadline passes, even if nobody clicks. In Temporal that is a durable timer: "even if your Worker or Temporal Service is down when the time period completes", it still fires, and workers "consume no additional resources while waiting".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.temporal.io/workflow-execution/timers-delays">Temporal docs, "Timers"</a>.</span> In your version, a scheduled job that calls <code>run()</code> on waiting workflows does the same job.</p>
 
-<h2>8 · Build it</h2>
+<h2 id="build-it">8 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0007-approvals/</code>. Read the top of <code>harness.ts</code>. It plays everything around your workflow: the order system (whose <code>CreateReturn</code> has no idempotency key), the notifier, the approval app, a clock the checks can move forward, and crashes. <code>start.ts</code> is the naive version:</p>
 
@@ -233,7 +234,7 @@ PASS  Nobody waits forever
 
 <p>Try one experiment before you move on. In a copy of <code>solution.ts</code>, make the <code>create_return</code> step call <code>orders.createReturn(…)</code> directly, without the <code>findReturn</code> look-up. Run it: only check 5 fails. Undo that, and make the claim always win instead: replace <code>(lease_until is null or lease_until &lt; $3)</code> with <code>($3::timestamptz is not null)</code>, which is always true. Now only check 6 fails. Each idea guards against one specific failure, and the checks show which.</p>
 
-<h2>9 · Which idea saves you?</h2>
+<h2 id="which-idea-saves-you">9 · Which idea saves you?</h2>
 
 <p>Each card is something that will happen to a real workflow. Decide which of the four ideas stops it from doing harm.</p>
 
@@ -263,7 +264,7 @@ PASS  Nobody waits forever
 }
 </script>
 
-<h2>10 · Check yourself</h2>
+<h2 id="check-yourself">10 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -306,7 +307,7 @@ PASS  Nobody waits forever
 }
 </script>
 
-<h2>11 · Design Maria's approval card</h2>
+<h2 id="design-marias-approval-card">11 · Design Maria's approval card</h2>
 
 <p>Maria will see your approval request as a card in a chat app, between other messages, probably on a phone, and will give it about ten seconds. Write the card for the EUR 1,299 return on order A-1001. It saves as you type.</p>
 

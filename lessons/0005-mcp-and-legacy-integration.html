@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>An MCP server written by hand, with no SDK, that a real MCP client could start. It wraps a SOAP order system from 2009: it translates the XML and the status codes into clean fields, turns faults into errors the model can act on, waits when the rate limit says wait, gives up after three tries, and keeps its API key out of every log. You'll also be able to say, for any failure, whether to retry it or not, and why.</p>
 </div>
 
-<h2>1 · Half the job is plumbing</h2>
+<h2 id="half-the-job-is-plumbing">1 · Half the job is plumbing</h2>
 
 <p>Integration work shows up in 32% of FDE job ads. Reducto's ad asks for "MCP servers, sub-agents, and agent skills" in production.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">Bloomberry, "I analyzed 1,000 forward deployed engineer jobs"</a>. See also <a href="0001-the-real-job-behind-the-roadmap.html">Lesson 1</a>.</span> Gergely Orosz read a Google Cloud FDE ad and put the split at about 50% integration and plumbing, 25% coding, and 25% meetings.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://blog.pragmaticengineer.com/the-pulse-forward-deployed-engineering-heats-up-again/">The Pragmatic Engineer, "Forward deployed engineering heats up again"</a>.</span></p>
 
@@ -40,7 +41,7 @@
 
 <p>The adapter will be an MCP server. MCP is the standard way to give agents tools, so one server works in any MCP client. In production you would probably use an official SDK.<span class="sn-ref"></span><span class="sidenote numbered">The SDKs are listed at <a href="https://modelcontextprotocol.io/docs/sdk">modelcontextprotocol.io/docs/sdk</a>.</span> You'll write this one by hand anyway, because at a customer site you debug the wire: a client that won't connect, a tool that never appears, a reply that never arrives. If you know the messages, you can read what went wrong.</p>
 
-<h2>2 · MCP in one page</h2>
+<h2 id="mcp-in-one-page">2 · MCP in one page</h2>
 
 <p>Every MCP message is JSON-RPC 2.0. There are three kinds:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic">MCP specification 2026-07-28, "Overview"</a>, sections "Messages" and "Error Codes". The error codes come from the <a href="https://www.jsonrpc.org/specification">JSON-RPC 2.0 specification</a>.</span></p>
 <ul>
@@ -68,7 +69,7 @@
   <p><strong>Learned MCP before July 2026?</strong> The 2026-07-28 revision removed the <code>initialize</code> handshake and protocol-level sessions. The version and capabilities now travel on every request instead, and <code>server/discover</code> is new.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/changelog">MCP 2026-07-28, "Key Changes"</a>, major changes 1 to 3 and 8.</span> Older clients and servers still exist. The spec calls them "legacy", and a server "MAY" support both eras. At a customer, the first thing to check when a client won't talk to your server is which revision each side speaks.</p>
 </div>
 
-<h2>3 · stdio: one rule breaks most first servers</h2>
+<h2 id="stdio-one-rule-breaks-most-first-servers">3 · stdio: one rule breaks most first servers</h2>
 
 <p>A local MCP server uses the stdio transport. "The client launches the MCP server as a subprocess." The rules that matter:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/stdio">MCP 2026-07-28, "stdio"</a>, sections on messages, shutdown and unexpected termination.</span></p>
 <ul>
@@ -83,7 +84,7 @@
 
 <p><strong>Credentials come from the environment.</strong> <a href="0003-enterprise-identity-for-agents.html">Lesson 3</a> showed that a stdio server "SHOULD NOT follow" MCP's OAuth authorization spec, and should "retrieve credentials from the environment" instead.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/basic">MCP 2026-07-28, "Overview"</a>, section "Auth".</span> So the API key arrives as an environment variable, set by whoever configured the server. Ask the Lesson 3 question: whose key is it? It is usually a service account. The key goes into one place, the request header. It never goes into a tool argument, a tool result or a log line.</p>
 
-<h2>4 · Design the tool for the model, not for the API</h2>
+<h2 id="design-the-tool-for-the-model-not-for-the-api">4 · Design the tool for the model, not for the API</h2>
 
 <p><code>tools/list</code> returns each tool's <code>name</code>, a <code>description</code> and an <code>inputSchema</code>, a JSON Schema for the arguments. A <code>tools/call</code> result holds <code>content</code> (text, for the model) and, optionally, <code>structuredContent</code> (JSON, for code). "A tool that returns structured content SHOULD also return the serialized JSON in a TextContent block."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">MCP 2026-07-28, "Tools"</a>, sections "Tool", "Tool Result" and "Structured Content". List results also carry <code>ttlMs</code> and <code>cacheScope</code>, so clients know how long they may cache the list.</span></p>
 
@@ -104,7 +105,7 @@
   </tbody>
 </table>
 
-<h2>5 · Two kinds of error</h2>
+<h2 id="two-kinds-of-error">5 · Two kinds of error</h2>
 
 <p>The MCP tools spec splits errors in two, and the split decides who can fix the problem:</p>
 
@@ -126,7 +127,7 @@
   <li><strong>Receiver:</strong> the failure is on their side, for example an upstream system "which did not respond". "The message could succeed if resent at a later point in time." Retry, with a wait.</li>
 </ul>
 
-<h2>6 · Rate limits and retries</h2>
+<h2 id="rate-limits-and-retries">6 · Rate limits and retries</h2>
 
 <p><strong>When the system says "later".</strong> HTTP 429 means "the user has sent too many requests in a given amount of time", and the response "MAY include a Retry-After header indicating how long to wait".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.rfc-editor.org/rfc/rfc6585.html#section-4">RFC 6585, section 4, "429 Too Many Requests"</a>.</span> Retry-After is "either an HTTP-date or a number of seconds", and it also comes with 503 to say how long a service "is expected to be unavailable".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.rfc-editor.org/rfc/rfc9110.html#section-10.2.3">RFC 9110, section 10.2.3, "Retry-After"</a>.</span> When the header is there, wait at least that long. When it isn't (a Receiver fault, a dropped connection), wait longer after each attempt.</p>
 
@@ -141,13 +142,13 @@
 
 <p><strong>Protect the old system from the model.</strong> An agent in a loop can call a tool many times a minute. The tools spec says servers "MUST" rate limit tool invocations, and clients "SHOULD" implement timeouts for tool calls. So keep your waits short. If Retry-After asks for an hour, don't block the agent for an hour: return <code>isError</code> and say when to try again.</p>
 
-<h2>7 · When there is no API at all</h2>
+<h2 id="when-there-is-no-api-at-all">7 · When there is no API at all</h2>
 
 <p>Some systems only have screens. The roadmap's fallback for these is a headless browser: code that drives a real browser with no window, such as Playwright with Chromium's headless mode.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://playwright.dev/docs/browsers">Playwright docs, "Browsers"</a>, sections on Chromium's headless shell and new headless mode.</span> Treat it as the last resort. It breaks when someone moves a button, it is slow, and it usually signs in as a real user, so the Lesson 3 questions about whose account it is come back.</p>
 
 <p>Keep the same tool contract on top of it. The model calls <code>get_order</code> and never learns that a browser sits underneath. If a task needs several steps in one browser, MCP has no session to keep it in. The tools spec suggests returning "an explicit handle" from a first tool and passing it to the next calls, and it names "an open browser context" as an example. It also warns that "a handle is a name, not a capability": check the caller's permission on every call.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://modelcontextprotocol.io/specification/2026-07-28/server/tools">MCP 2026-07-28, "Tools"</a>, section "Stateful Tools".</span></p>
 
-<h2>8 · Build it</h2>
+<h2 id="build-it">8 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0005-mcp/</code>. <code>harness.ts</code> runs the fake order system (SOAP 1.2, an API key, 3 requests per second) and plays the MCP client. When you run <code>start.ts</code>, the harness starts that same file again with <code>serve</code> as a subprocess, speaks JSON-RPC to it over stdin and stdout, and checks seven things. <code>start.ts</code> already has the stdio loop and a working <code>server/discover</code> and <code>tools/list</code>. Its tool is the naive version:</p>
 
@@ -255,7 +256,7 @@ PASS  The API key stays secret
 
 <p>Two details in the solution are worth stealing. The "down" message says "Nothing was changed", which is true for a read and tells the model it is safe to try again later. And the stdio loop doesn't wait for one request before reading the next, so five tool calls can wait for the rate limit side by side.</p>
 
-<h2>9 · Retry, report, or reject?</h2>
+<h2 id="retry-report-or-reject">9 · Retry, report, or reject?</h2>
 
 <p>Each card is something your server might see. Decide what it should do: wait and retry, return a tool execution error (<code>isError</code>) without retrying, or answer with a JSON-RPC protocol error.</p>
 
@@ -287,7 +288,7 @@ PASS  The API key stays secret
 }
 </script>
 
-<h2>10 · Check yourself</h2>
+<h2 id="check-yourself">10 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -330,7 +331,7 @@ PASS  The API key stays secret
 }
 </script>
 
-<h2>11 · Write the next tool</h2>
+<h2 id="write-the-next-tool">11 · Write the next tool</h2>
 
 <p>Acme is happy with <code>get_order</code>. Now they want the agent to start returns, through the order system's <code>CreateReturn</code> operation. It changes data, and it has no idempotency key. Write what the model will read for this tool. It saves as you type.</p>
 

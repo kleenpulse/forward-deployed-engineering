@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>A masking proxy, in Postgres and TypeScript, between Acme's agent and the model: three detectors that cover each other's gaps, checksums that tell a card number from an invoice number, placeholders that stay the same for the same person, unmasking only for Kim's review queue or a tool call and only within the same conversation, a log of every unmask that never holds the values, and a one-way copy of each email for the golden set. Then the one-page answer Petra asked for.</p>
 </div>
 
-<h2>1 · Where personal data goes</h2>
+<h2 id="where-personal-data-goes">1 · Where personal data goes</h2>
 
 <p>GDPR, the EU's data protection law, starts with a wide definition: "'personal data' means any information relating to an identified or identifiable natural person".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Regulation (EU) 2016/679 (GDPR)</a>, Article 4(1). The same article lists "a name, an identification number, location data, an online identifier" as examples.</span> Acme sells to bike shops, so it's tempting to think the emails are company data. They aren't. <code>sanne.visser@fietsplaats.example</code> is a work address, and it still names Sanne. Here is what one December morning brings into the support inbox:</p>
 <table>
@@ -56,7 +57,7 @@
 
 <p>There is a security reason too. Simon Willison calls it the lethal trifecta: an agent with "Access to your private data", "Exposure to untrusted content" and "The ability to externally communicate". "If your agent combines these three features, an attacker can easily trick it into accessing your private data and sending it to that attacker."<span class="sn-ref"></span><span class="sidenote numbered">Simon Willison, <a href="https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/">"The lethal trifecta for AI agents: private data, untrusted content, and external communication"</a> (June 2025).</span> Acme's agent reads email from anyone, and it writes replies. Masking takes the first leg away from the model: an IBAN it never saw is an IBAN a prompt injection can't make it repeat.</p>
 
-<h2>2 · Five ways to hide a value</h2>
+<h2 id="five-ways-to-hide-a-value">2 · Five ways to hide a value</h2>
 
 <p>People use these words as if they meant the same thing. They don't, and the difference decides what you may do with the result.</p>
 <table>
@@ -78,7 +79,7 @@
 
 <p><strong>Format-preserving encryption is for old systems.</strong> If a core banking system rejects anything that isn't IBAN-shaped, FPE gives it an IBAN-shaped ciphertext. NIST's methods are FF1 and FF3, and its 2025 draft revision drops FF3 after researchers "identified vulnerabilities when the number of possible inputs (i.e., the domain size) is sufficiently small".<span class="sn-ref"></span><span class="sidenote numbered">NIST, <a href="https://csrc.nist.gov/pubs/sp/800/38/g/r1/2pd">SP 800-38G Rev. 1, second public draft</a> (February 2025): "The encryption method FF3 is no longer specified."</span> A model doesn't check formats, so the proxy uses placeholders. Reach for FPE only when a system you can't change does.</p>
 
-<h2>3 · Finding it: three detectors</h2>
+<h2 id="finding-it-three-detectors">3 · Finding it: three detectors</h2>
 
 <p>You can't mask what you don't find. Presidio, the open-source PII toolkit, combines "Named Entity Recognition, regular expressions, rule based logic and checksum", and still warns: "there is no guarantee that Presidio will find all sensitive information. Consequently, additional systems and protections should be employed."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://presidio.dataprivacystack.org/">Presidio</a>, "Main features" and "Warning". Presidio started at Microsoft and is now a community project; its docs moved to this address.</span> Use detectors that fail in different places:</p>
 <table>
@@ -96,7 +97,7 @@
 
 <p>Detection is a first pass, not a promise. Some personal data has no shape at all: "Sorry for the slow reply, I was in hospital" matches no pattern and no name. Section 7 comes back to that.</p>
 
-<h2>4 · The proxy: placeholders in, values out</h2>
+<h2 id="the-proxy-placeholders-in-values-out">4 · The proxy: placeholders in, values out</h2>
 
 <p>The design is Presidio's own pseudonymisation sample: replace each value with a placeholder like <code>&lt;PERSON_1&gt;</code>, keep the mapping, and "Since the user/client is holding the entity_mapping, it is possible to use it for de-anonymization as well."<span class="sn-ref"></span><span class="sidenote numbered">Presidio, <a href="https://github.com/data-privacy-stack/presidio/blob/main/docs/samples/python/pseudonymization.ipynb">"Use Presidio Anonymizer for Pseudonymization of PII data"</a> (sample notebook).</span> Four rules make it safe:</p>
 <ol>
@@ -108,7 +109,7 @@
 
 <p>The vault is now the most sensitive table you own. GDPR names "the pseudonymisation and encryption of personal data" as security measures.<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Article 32(1)(a)</a>.</span> The EDPB adds that pseudonymisation's effectiveness "is highly dependent on the choice of the pseudonymisation domain and its isolation from additional information".<span class="sn-ref"></span><span class="sidenote numbered">EDPB, <a href="https://www.edpb.europa.eu/documents/guideline/guidelines-012025-on-pseudonymisation_en">Guidelines 01/2025</a>, "Executive summary".</span> So keep the vault where Acme's data may live (<a href="0002-discovery-and-scoping.html">Lesson 2's data residency</a>), encrypted, readable only by the proxy, and out of every log and trace. And delete rows when the conversation closes: GDPR says personal data is "kept in a form which permits identification of data subjects for no longer than is necessary".<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Article 5(1)(e)</a>, "storage limitation".</span></p>
 
-<h2>5 · Build it</h2>
+<h2 id="build-it">5 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0011-pii/</code>. The top of <code>harness.ts</code> describes the three emails, the <code>tickets</code> and <code>contacts</code> tables, the NER stand-in, the product catalogue and the <code>unmask_log</code> table. You write four functions: <code>setup</code>, <code>mask</code>, <code>unmask</code> and <code>exportCase</code>. The harness sends each masked email to a stand-in model that keeps a copy of everything it receives, like a provider's logs, and the checks read that copy.</p>
 
@@ -234,13 +235,13 @@ Unmask log: 10 calls, 2 refused.</code></pre></figure>
 
 <p>Try two experiments in a copy of <code>solution.ts</code>. First, add a score threshold to the NER loop: <code>if (hit.score &lt; 0.6) continue;</code>. Checks 1 and 7 fail: Lena Hoffmann goes to the model and into the golden set, while Florence, the mistake, would still need the allow-list. Undo that, and remove <code>&amp;&amp; luhn(digits)</code> from the card rule. Only check 3 fails: the invoice number is now a "card", and the agent can no longer look it up.</p>
 
-<h2>6 · The golden-set copy</h2>
+<h2 id="the-golden-set-copy">6 · The golden-set copy</h2>
 
 <p>Placeholders are right for a live conversation, because Kim and the tools need the values back. They are wrong for a copy that will be kept, shared with the eval team, and maybe sent to a vendor: anyone with the vault can put the names back, so the copy is still personal data. <code>exportCase()</code> runs the same detection and writes <code>[PERSON]</code> and <code>[IBAN]</code>, with no number and nothing stored.</p>
 
 <p>That is still not anonymisation by itself. GDPR asks about "all the means reasonably likely to be used, such as singling out".<span class="sn-ref"></span><span class="sidenote numbered">GDPR, <a href="https://eur-lex.europa.eu/eli/reg/2016/679/oj">Recital 26</a>.</span> "A bike shop in Utrecht with a workshop and an event on Saturday" might single out Sanne without her name. HIPAA's guidance says the same about free text: clinical notes "may provide context that readily allows for patient identification".<span class="sn-ref"></span><span class="sidenote numbered">HHS de-identification guidance, <a href="https://www.hhs.gov/hipaa/for-professionals/special-topics/de-identification/index.html#protected">section 3.10, free text fields</a>.</span> So a person from Luis's team reads every case before it goes in, as they did when they wrote the expected answers in <a href="0008-evals-on-customer-data.html">Lesson 8</a>. The detectors do the bulk; the person does the judgement.</p>
 
-<h2>7 · A bank or a hospital</h2>
+<h2 id="a-bank-or-a-hospital">7 · A bank or a hospital</h2>
 
 <p>This stage is marked specialist because its heavy version comes with regulated customers. The proxy stays the same. What changes is the data, the contracts, and who decides.</p>
 <table>
@@ -259,7 +260,7 @@ Unmask log: 10 calls, 2 refused.</code></pre></figure>
 
 <p><strong>You don't decide this alone.</strong> In every row, the customer's data protection officer, security team and lawyers decide what may leave, and where to. Your job is to make their decision true in code, show them what the model sees, and tell them plainly what detection misses. A list of known gaps earns more trust than a claim of "100% PII removal".</p>
 
-<h2>8 · Placeholder, or as is?</h2>
+<h2 id="placeholder-or-as-is">8 · Placeholder, or as is?</h2>
 
 <p>Each card is something in Acme's December emails. Decide whether it goes to the model as it is, or as a placeholder.</p>
 
@@ -291,7 +292,7 @@ Unmask log: 10 calls, 2 refused.</code></pre></figure>
 }
 </script>
 
-<h2>9 · Check yourself</h2>
+<h2 id="check-yourself">9 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -346,7 +347,7 @@ Unmask log: 10 calls, 2 refused.</code></pre></figure>
 }
 </script>
 
-<h2>10 · Answer Petra</h2>
+<h2 id="answer-petra">10 · Answer Petra</h2>
 
 <p>Petra asked what personal data reaches the model provider, and why. Write the answer she can put in Acme's records. Write it for her, not for an engineer. It saves as you type.</p>
 

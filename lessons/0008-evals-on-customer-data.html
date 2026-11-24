@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>A golden set built from Acme's real emails, and a grader in TypeScript that checks what the agent did (its tool calls and the return it started) as well as what it said. It runs each case three times, reports pass@1, pass@3 and pass^3, and blocks a release that breaks a case that used to work, even when the average went up. Then you write the result for Dana in one paragraph.</p>
 </div>
 
-<h2>1 · Why evals are part of the job</h2>
+<h2 id="why-evals-are-part-of-the-job">1 · Why evals are part of the job</h2>
 
 <p>OpenAI's job ad for an FDE names three ways your work is judged: "You will measure success through production adoption, measurable workflow impact, and eval-driven feedback that changes product and model roadmaps."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/">OpenAI, Forward Deployed Engineer (FDE) job ad</a>, "About the role", as of November 2026.</span> This lesson is the third one. <a href="0009-telemetry-and-roi.html">Lesson 9</a> covers the other two.</p>
 
@@ -40,7 +41,7 @@
 
 <p>Here is the situation. v1 of Acme's agent has been live for a month. It answers order-status emails and starts returns through the tools from <a href="0005-mcp-and-legacy-integration.html">Lesson 5</a> and the workflow from <a href="0007-human-in-the-loop-workflows.html">Lesson 7</a>. v2 has a warmer prompt and cleans up messy order ids like <code>a-1002 </code>. Nobody has measured either of them.</p>
 
-<h2>2 · Build the golden set from the customer's data</h2>
+<h2 id="build-the-golden-set-from-the-customers-data">2 · Build the golden set from the customer's data</h2>
 
 <p>A golden set is a list of real inputs, each with the result the customer agrees is correct. You don't need hundreds to start. Anthropic's engineers: "In reality, 20-50 simple tasks drawn from real failures is a great start", and "If you're already in production, look at your bug tracker and support queue."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a> (January 2026), sections "Step 0. Start early" and "Step 1. Start with what you already test manually".</span> OpenAI: "Log everything: Log as you develop so you can mine your logs for good eval cases." Acme's golden set starts with eight emails from the October helpdesk export: order-status questions, an order that doesn't exist, a small return, a big return, and a refund on a cancelled order. You'll add a case every time something goes wrong in production.</p>
 
@@ -68,7 +69,7 @@
 
 <p>Read it as Luis's team would say it: look up A-1001; start exactly one return, for EUR 1,299; tell the customer it needs approval; never tell them it is approved or that money is coming. The <code>must_not_say</code> phrases are wrong replies the team has seen before.</p>
 
-<h2>3 · Three kinds of grader</h2>
+<h2 id="three-kinds-of-grader">3 · Three kinds of grader</h2>
 
 <p>A grader decides whether one run passed. Anthropic's docs rank three kinds:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://platform.claude.com/docs/en/test-and-evaluate/develop-tests">Anthropic docs, "Define success criteria and build evaluations"</a>, section "Grade your evaluations". The engineering post's table adds that model-based graders are "Non-deterministic", "More expensive than code" and "Requires calibration with human graders for accuracy".</span></p>
 
@@ -85,7 +86,7 @@
 
 <p>Whatever the grader, make it say pass or fail. Husain: "If your evaluations consist of a bunch of metrics that LLMs score on a 1-5 scale (or any other scale), you're doing it wrong."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://hamel.dev/blog/posts/llm-judge/#dont-stray-from-binary-passfail-judgments-when-starting-out">Hamel Husain, "Don't stray from binary pass/fail judgments when starting out"</a>.</span> Nobody can act on "tone: 3.4". Everybody can act on "R-02 failed, here is the reply".</p>
 
-<h2>4 · Grade what it did, not only what it said</h2>
+<h2 id="grade-what-it-did-not-only-what-it-said">4 · Grade what it did, not only what it said</h2>
 
 <p>An agent's reply is a claim about what happened. The truth is in Acme's systems. Anthropic's example: "A flight-booking agent might say 'Your flight has been booked' at the end of the transcript, but the outcome is whether a reservation exists in the environment's SQL database."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a>, "The structure of an evaluation".</span> So the outcome is the state of the real systems after the run, not the agent's words about it.</p>
 
@@ -99,7 +100,7 @@
 
 <p>Be honest about what phrase lists can't do. τ-bench's authors say their own check "might be a necessary but not sufficient condition": the agent might, for example, "issue the return without explicit user confirmation, which violates the policy." A phrase list catches the wrong replies the team has already seen. It misses new ways of being wrong. That is what model judges and reading transcripts are for (section 7).</p>
 
-<h2>5 · Run every case more than once</h2>
+<h2 id="run-every-case-more-than-once">5 · Run every case more than once</h2>
 
 <p>Ask an agent the same thing three times and you may get three different runs. One good run proves little. Anthropic defines two scores for this:<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a>, "How to think about non-determinism in evaluations for agents".</span></p>
 <ul>
@@ -109,7 +110,7 @@
 
 <p>Acme's customers don't get three tries. Each email gets one run, so pass^k is the number that matches what they live through. τ-bench found the gap is large: for its best agent, "which has a &gt;60% average task success, pass^8 drops to &lt;25%."<span class="sn-ref"></span><span class="sidenote numbered">Yao et al., <a href="https://arxiv.org/html/2406.12045">τ-bench</a>, section 5.1, "Main results". The paper defines pass^k as "the chance that all k i.i.d. task trials are successful, averaged across tasks."</span> pass@k is still useful while you build: if a case passes at least once, the agent can do it, and the work is to make it reliable.</p>
 
-<h2>6 · Regressions block the release</h2>
+<h2 id="regressions-block-the-release">6 · Regressions block the release</h2>
 
 <p>Anthropic separates two kinds of eval. Capability evals hold what the agent can't do well yet. Regression evals "ask, 'Does the agent still handle all the tasks it used to?' and should have a nearly 100% pass rate."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.anthropic.com/research/demystifying-evals-for-ai-agents">Anthropic, "Demystifying evals for AI agents"</a>, "Capability vs. regression evals".</span> For a release decision, the regression set is a release gate. The rule in today's exercise: a case that passed every run before and fails any run after is a regression, and one regression blocks the release, whatever the average does.</p>
 
@@ -119,7 +120,7 @@
 
 <p>Isn't eight cases too few? Anthropic's docs say "Prioritize volume over quality: More questions with slightly lower signal automated grading is better than fewer questions with high-quality human hand-graded evals." Their engineers say 20 to 50 real cases is "a great start", because early changes have large effects and "small sample sizes suffice". Both are true at different times. Start small with real cases. Grow the set as the differences you care about get smaller.</p>
 
-<h2>7 · Check the checker</h2>
+<h2 id="check-the-checker">7 · Check the checker</h2>
 
 <p>Some things code can't check: whether the tone fits a customer whose bikes arrived broken, or whether every fact in a long reply came from a tool result. For those you use a model as the judge. Judges are good but not neutral. The MT-Bench paper found strong judges reach "over 80% agreement, the same level of agreement between humans", and also "position, verbosity, and self-enhancement biases".<span class="sn-ref"></span><span class="sidenote numbered">Zheng et al., <a href="https://arxiv.org/abs/2306.05685">"Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena"</a> (2023), abstract. Verbosity bias is a judge preferring longer answers; position bias is preferring an answer because of where it appears.</span> The criteria-drift study from section 2 is blunter: evaluators written by a model "simply inherit all the problems of the LLMs they evaluate, requiring further human validation."</p>
 
@@ -129,13 +130,13 @@
 
 <p>And read the transcripts. Anthropic: "You won't know if your graders are working well unless you read the transcripts and grades from many trials." When a run fails, "the transcript tells you whether the agent made a genuine mistake or whether your graders rejected a valid solution." Reading many failed transcripts and sorting the failures into groups is called error analysis, and it tells you what to grade next. Husain admits that building a judge is partly "a nice 'hack' I use to trick people into carefully looking at their data!"</p>
 
-<h2>8 · Shadow mode: real traffic, no real writes</h2>
+<h2 id="shadow-mode-real-traffic-no-real-writes">8 · Shadow mode: real traffic, no real writes</h2>
 
 <p>A golden set is fixed. Live traffic isn't. Before v2 talks to customers, you can run it in shadow mode. AWS describes it for ML models: the new version gets "a copy of the inference requests", and "Only the responses of the production variant are returned to the calling application."<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://docs.aws.amazon.com/sagemaker/latest/dg/shadow-tests.html">AWS, "Shadow tests" (Amazon SageMaker AI docs)</a>. That page is about classic ML models, not agents.</span></p>
 
 <p>For an agent, one more rule, and AWS's page doesn't say it for you: the shadow copy must never run a write. Give it a <code>start_return</code> that records what it <em>would</em> have done and changes nothing. Then compare: the email, what the live system or Luis's team did, and what the shadow agent wanted to do. Every disagreement is either a bug or a new golden case. This is week 3 of the plan you wrote in <a href="0002-discovery-and-scoping.html">Lesson 2</a>.</p>
 
-<h2>9 · Build it</h2>
+<h2 id="build-it">9 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0008-evals/</code>. Read the top of <code>harness.ts</code>, then open <code>data/golden.json</code> and a few lines of <code>data/runs.jsonl</code>: 48 transcripts, v1 and v2 each answering the eight emails three times. Each line holds the tool calls with their arguments and results, and the reply. <code>start.ts</code> is the grader most teams write first:</p>
 
@@ -261,7 +262,7 @@ Your scorecard on data/runs.jsonl (8 cases, 3 runs each):
 
 <p>Try one experiment. In a copy of <code>solution.ts</code>, delete the <code>must_not_say</code> loop and run it: checks 1, 4 and 5 fail, the three replies that use the right words to say something false. Undo that, and make <code>decide()</code> compare <code>passAt1</code> only. Check 7 fails, and the scorecard says ship.</p>
 
-<h2>10 · Which grader?</h2>
+<h2 id="which-grader">10 · Which grader?</h2>
 
 <p>For each thing Acme wants checked, pick the cheapest grader that can check it reliably.</p>
 
@@ -289,7 +290,7 @@ Your scorecard on data/runs.jsonl (8 cases, 3 runs each):
 }
 </script>
 
-<h2>11 · Check yourself</h2>
+<h2 id="check-yourself">11 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -336,7 +337,7 @@ Your scorecard on data/runs.jsonl (8 cases, 3 runs each):
 }
 </script>
 
-<h2>12 · Write the result for Dana</h2>
+<h2 id="write-the-result-for-dana">12 · Write the result for Dana</h2>
 
 <p>Dana doesn't read scorecards. Dana reads one paragraph and decides. Write the eval result for v2 from your scorecard. It saves as you type.</p>
 

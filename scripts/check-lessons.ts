@@ -1,6 +1,6 @@
 // Checks every lesson and reference page: widget JSON parses, quiz options have
 // equal word counts, correct answers move around, local links resolve, every page links
-// the course icon, and no two glossary terms share a spelling.
+// the course icon, lesson headings have unique ids, and no two glossary terms share a spelling.
 // Run: bun scripts/check-lessons.ts   (exits 1 on any problem)
 import { Glob } from "bun";
 import { dirname, join, resolve } from "node:path";
@@ -60,6 +60,20 @@ for (const page of pages) {
 for (const page of pages) {
   const html = await Bun.file(join(root, page)).text();
   if (!/<link rel="icon" href="[^"]*assets\/favicon\.svg"/.test(html)) problems.push(`${page}: no <link rel="icon"> to assets/favicon.svg`);
+}
+
+// Lessons: every section heading has a unique id (the section rail and shared #links
+// point at it), and the page loads the rail.
+for (const page of pages.filter((p) => p.startsWith("lessons/"))) {
+  const html = await Bun.file(join(root, page)).text();
+  const seen = new Set<string>();
+  for (const m of html.matchAll(/<h2(?:\s+id="([^"]*)")?[^>]*>([\s\S]*?)<\/h2>/g)) {
+    const [, id, title] = m;
+    if (!id) problems.push(`${page}: <h2> "${title.trim()}" has no id`);
+    else if (seen.has(id)) problems.push(`${page}: two <h2> share the id "${id}"`);
+    else seen.add(id);
+  }
+  if (!html.includes('src="../assets/section-rail.js"')) problems.push(`${page}: does not load ../assets/section-rail.js`);
 }
 
 // The glossary: one term per spelling. Two terms sharing a spelling (in any letter case)

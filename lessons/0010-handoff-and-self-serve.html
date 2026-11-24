@@ -10,6 +10,7 @@
 <script src="../assets/scroll-ring.js" defer></script>
 <script src="../assets/scrollbar.js" defer></script>
 <script src="../assets/nav-dock.js" defer></script>
+<script src="../assets/section-rail.js" defer></script>
 </head>
 <body>
 <main>
@@ -32,7 +33,7 @@
   <p>An admin API, in Postgres and TypeScript, that lets Acme's own staff change the agent: every change a new version, rollback in one step, only active admins allowed, approvers checked against the directory, numbers kept inside Acme's finance policy, prompt edits blocked when they break a golden-set case, and every attempt (applied or refused) in an audit log. Then a runbook entry for the 3 a.m. alert that someone who has never seen the code can follow.</p>
 </div>
 
-<h2>1 · Done means someone else can run it</h2>
+<h2 id="done-means-someone-else-can-run-it">1 · Done means someone else can run it</h2>
 
 <p>OpenAI's FDE job ad says you own delivery "from first prototype to stable production".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://openai.com/careers/forward-deployed-engineer-(fde)-sf-san-francisco/">OpenAI, Forward Deployed Engineer (FDE) job ad</a>, "In this role you will", as of November 2026. It also asks you to "Codify working patterns into tools, playbooks, or building blocks that others can use".</span> Anthropic's FDE ad is more direct: "hand over systems the customer can run", and "deliver production systems the customer can operate".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://job-boards.greenhouse.io/anthropic/jobs/5449229008">Anthropic, Staff Forward Deployed Engineer job ad</a>, "Responsibilities", as of November 2026.</span> Stable production is not a date in a contract. It is the moment the customer can run the system without you. Until then, every change waits for you, and Google's SRE book is blunt about what that costs: "Humans add latency."<span class="sn-ref"></span><span class="sidenote numbered">Google, <i>Site Reliability Engineering</i>, <a href="https://sre.google/sre-book/introduction/#emergency-response-g0sKcpiL">Introduction, "Emergency Response"</a>.</span> If you are the human, you are the delay.</p>
 
@@ -50,7 +51,7 @@
   </tbody>
 </table>
 
-<h2>2 · Who owns what</h2>
+<h2 id="who-owns-what">2 · Who owns what</h2>
 
 <p>Google's configuration chapter: "Each configuration snippet for the system should have a clear owner."<span class="sn-ref"></span><span class="sidenote numbered">Google, <i>The Site Reliability Workbook</i>, <a href="https://sre.google/workbook/configuration-design/#ownership-and-change-tracking">"Configuration Design and Best Practices", "Ownership and Change Tracking"</a>.</span> Write the owners down before you leave, and agree them with Dana. At Acme:</p>
 <table>
@@ -67,7 +68,7 @@
 
 <p>Two things are missing from that table on purpose. The agent owns nothing: it reads its settings and never writes them. And there is no row that says "ask the FDE". If you are still the only way to do something common, that thing isn't handed over yet.</p>
 
-<h2>3 · Make the common changes self-serve</h2>
+<h2 id="make-the-common-changes-self-serve">3 · Make the common changes self-serve</h2>
 
 <p>Google defines configuration as "a human-computer interface for modifying system behavior", and adds: "A good configuration interface allows quick, confident, and testable configuration changes. When users don't have a straightforward way to update configuration, mistakes are more likely."<span class="sn-ref"></span><span class="sidenote numbered">SRE workbook, <a href="https://sre.google/workbook/configuration-design/#what-is-configuration">"Configuration Design and Best Practices", "What Is Configuration?"</a>.</span> An admin page is that interface for people like Luis. Feature flag tools work the same way. Pete Hodgson describes "Ops Toggles" that let operators "quickly react to production issues", usually with "some form of admin UI which allows system operators, testers and product managers to view and modify" them.<span class="sn-ref"></span><span class="sidenote numbered">Pete Hodgson, <a href="https://martinfowler.com/articles/feature-toggles.html#OpsToggles">"Feature Toggles (aka Feature Flags)"</a>, sections "Ops Toggles" and <a href="https://martinfowler.com/articles/feature-toggles.html#ToggleConfigurationInAppDb">"Storing Toggle Configuration in an App DB"</a>. Last updated in 2017, and still the clearest map of the idea.</span></p>
 
@@ -75,7 +76,7 @@
 
 <p>Don't make everything a setting. Pick the changes you saw during the pilot and expect to see again: the approvers, the limit, the prompt. A new tool, a new model or a new mailbox changes what the agent can do, and needs an engineer, an eval and sometimes a new contract. Google's advice: <span class="no-terms">"Configuration design carries aspects of both API and UI design and should be purposeful—not just a side effect of system implementation."</span><span class="sn-ref"></span><span class="sidenote numbered">SRE workbook, <a href="https://sre.google/workbook/configuration-design/#conclusion">"Configuration Design and Best Practices", "Conclusion"</a>.</span></p>
 
-<h2>4 · Guard every setting</h2>
+<h2 id="guard-every-setting">4 · Guard every setting</h2>
 
 <p>Self-serve doesn't mean "anything goes". It means the system checks the change instead of you. Google: "For every possible misconfiguration, we should ask ourselves if we could prevent it at the moment the user commits the configuration, rather than after changes are submitted."<span class="sn-ref"></span><span class="sidenote numbered">SRE workbook, <a href="https://sre.google/workbook/configuration-design/#semantic-validation">"Configuration Design and Best Practices", "Semantic validation"</a>.</span> Every guard below comes from an earlier lesson:</p>
 <table>
@@ -95,7 +96,7 @@
 
 <p>Write the error for Luis, not for you. "There is no setting called approval_limt_eur. The settings are approvers, approval_limit_eur, prompt." tells him what to do. "invalid patch" sends him to email you.</p>
 
-<h2>5 · Versions, rollback and the audit log</h2>
+<h2 id="versions-rollback-and-the-audit-log">5 · Versions, rollback and the audit log</h2>
 
 <p>Google estimates that "roughly 70% of outages are due to changes in a live system", and names three defences: "Implementing progressive rollouts", "Quickly and accurately detecting problems", and "Rolling back changes safely when problems arise".<span class="sn-ref"></span><span class="sidenote numbered">Google SRE book, <a href="https://sre.google/sre-book/introduction/#change-management-q8sdiQiA">Introduction, "Change Management"</a>. The 70% is Google's own figure for its systems; the book doesn't show the data behind it.</span> The workbook says the same for configuration, and adds why: "Rolling back the offending configuration can mitigate an outage much more quickly than attempting to patch it with a temporary fix".<span class="sn-ref"></span><span class="sidenote numbered">SRE workbook, <a href="https://sre.google/workbook/configuration-design/#safe-configuration-change-application">"Configuration Design and Best Practices", "Safe Configuration Change Application"</a>.</span> At 3 a.m., nobody should be writing a better prompt.</p>
 
@@ -107,7 +108,7 @@
   <p><strong>The grown-up version.</strong> The exercise keeps both tables in the same database as everything else. In production, make the audit log append-only, so a bug or an attacker with the app's credentials can't rewrite it. OWASP asks for "an audit trail with integrity controls to prevent tampering or deletion, such as append-only database tables or similar". Add a "save" that fails if someone else saved first (two admins at once), and, for the riskiest settings, "two-person control": NIST's name for a change that can't happen "unless two qualified individuals approve and implement such changes".<span class="sn-ref"></span><span class="sidenote numbered">NIST SP 800-53 Rev. 5, <a href="https://nvlpubs.nist.gov/nistpubs/SpecialPublications/NIST.SP.800-53r5.pdf#page=129">control CM-5(4), "Dual Authorization"</a> (p. 102). The OWASP quote is from <a href="https://owasp.org/Top10/2025/A09_2025-Security_Logging_and_Alerting_Failures/#how-to-prevent">A09, "How to Prevent"</a>.</span> The exercise skips these to stay small.</p>
 </div>
 
-<h2>6 · The runbook, and practising it</h2>
+<h2 id="the-runbook-and-practising-it">6 · The runbook, and practising it</h2>
 
 <p>Settings cover the changes you can predict. Alerts cover the rest. Google's first book reports that "thinking through and recording the best practices ahead of time in a "playbook" produces roughly a 3x improvement in MTTR as compared to the strategy of "winging it.""<span class="sn-ref"></span><span class="sidenote numbered">Google SRE book, <a href="https://sre.google/sre-book/introduction/#emergency-response-g0sKcpiL">Introduction, "Emergency Response"</a>. Like the 70%, the 3x is Google's own estimate, with no data on the page. The later workbook calls what a playbook should contain "a contentious topic".</span> Its workbook says what goes in one: "Playbooks contain high-level instructions on how to respond to automated alerts. They explain the severity and impact of the alert, and include debugging suggestions and possible actions to take to mitigate impact and fully resolve the alert." And the rule: "Each alert should have a corresponding playbook entry."<span class="sn-ref"></span><span class="sidenote numbered">SRE workbook, "On-Call": <a href="https://sre.google/workbook/on-call/#training-roadmap">"Training roadmap"</a> and <a href="https://sre.google/workbook/on-call/#alerting">"Alerting"</a>.</span></p>
 
@@ -122,7 +123,7 @@
 
 <p>Then hand over the pager in steps. The same chapter describes shadowing: copy the alerts to the new person, who "is not the appointed on-caller", so there is no time pressure. Then reverse shadowing: "The newbie will become primary on-call and own all incoming escalations, but the experienced on-caller will lurk in the shadows, independently diagnosing the situation without modifying any state."<span class="sn-ref"></span><span class="sidenote numbered">SRE book, <a href="https://sre.google/sre-book/accelerating-sre-on-call/#shadow-on-call-early-and-often-ZKsQcoie">"Shadow On-Call Early and Often"</a> and the tip in that section.</span> For Acme: in your last week, Acme's on-call person shadows you. In your first week away, you reverse-shadow them. After that, you are an escalation in the runbook, with hours and a contact, like the order system team.</p>
 
-<h2>7 · Build it</h2>
+<h2 id="build-it">7 · Build it</h2>
 
 <p>The exercise lives in <code>exercises/0010-self-serve/</code>. The top of <code>harness.ts</code> describes the three settings, the directory (synced by SCIM, with two people who have left), the golden set and the <code>audit_log</code> table. You write five functions: <code>setup</code>, <code>current</code>, <code>history</code>, <code>change</code> and <code>rollback</code>. The checks then play out Acme's December: 22 attempts to change the agent, by Luis, Omar, Kim, two people who left, and the agent itself.</p>
 
@@ -238,7 +239,7 @@ What Luis sees on the admin page:
 
 <p>Try two experiments in a copy of <code>solution.ts</code>. First, replace the prompt rule with "every case must pass": <code>after.filter((c) =&gt; !c.pass)</code>. Checks 1 and 6 fail: the harmless holiday greeting and the sign-off are blocked, because U-01 failed before them too. Undo that, and drop <code>typeof limit !== "number" || !Number.isFinite(limit) ||</code> from the limit check. Only check 5 fails: the limit is saved as the text <code>"600"</code>, and every piece of code that reads it later has to guess what it is. In JavaScript, <code>"600" + 100</code> is <code>"600100"</code>.</p>
 
-<h2>8 · Admin page, or not?</h2>
+<h2 id="admin-page-or-not">8 · Admin page, or not?</h2>
 
 <p>Each card is a request Acme might make after you leave. Decide whether their staff should do it on the admin page, or whether it needs someone else.</p>
 
@@ -268,7 +269,7 @@ What Luis sees on the admin page:
 }
 </script>
 
-<h2>9 · Check yourself</h2>
+<h2 id="check-yourself">9 · Check yourself</h2>
 
 <p>Answer from memory, then read every explanation, including the ones you got right.</p>
 
@@ -319,7 +320,7 @@ What Luis sees on the admin page:
 }
 </script>
 
-<h2>10 · Write the runbook entry</h2>
+<h2 id="write-the-runbook-entry">10 · Write the runbook entry</h2>
 
 <p>The alert from <a href="0009-telemetry-and-roi.html">Lesson 9</a> fires when more than 20% of live runs are handed off, on a day with at least 20 runs. Write its runbook entry for Acme's on-call person. It saves as you type.</p>
 
