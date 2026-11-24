@@ -32,7 +32,6 @@
     // Width of the stacked list, measured on a hidden copy so the real nav never flickers.
     const measure = () => {
       const probe = nav.cloneNode(true);
-      probe.querySelector(".theme-toggle")?.remove();
       probe.dataset.docked = "";
       probe.dataset.probe = "";
       probe.setAttribute("aria-hidden", "true");

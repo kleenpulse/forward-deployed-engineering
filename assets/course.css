@@ -388,15 +388,27 @@ nav.course[data-probe] { visibility: hidden; pointer-events: none; }
 
 /* ---------- Theme toggle (theme.js) ---------- */
 
-/* Pinned to the window's top-right corner, so it never wraps under long navs. */
-.theme-toggle {
+/* "Star on GitHub" and the theme toggle, pinned to the window's top-right corner so they
+   never wrap under long navs. Both are pills in the label font. */
+.top-actions {
   position: fixed; top: 1rem; right: 1.25rem; z-index: 10;
-  /* Its own font, not inherited: it lives inside nav.course, which restyles itself when docked. */
-  font: 400 .8rem/1.55 var(--font-label); letter-spacing: normal; cursor: pointer; background: var(--paper); color: var(--muted);
-  border: 1px solid var(--rule); border-radius: 999px; padding: .15rem .7rem;
+  display: flex; align-items: center; gap: .5rem;
 }
-.theme-toggle:hover { color: var(--title); border-color: var(--muted); }
-.theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.theme-toggle, .gh-star {
+  display: inline-flex; align-items: center; gap: .4rem;
+  font: 400 .8rem/1.55 var(--font-label); letter-spacing: normal; cursor: pointer;
+  background: var(--paper); color: var(--muted); text-decoration: none;
+  border: 1px solid var(--rule); border-radius: 999px; padding: .15rem .7rem;
+  transition: color 150ms, border-color 150ms;
+}
+.gh-star svg { width: 14px; height: 14px; flex: none; }
+.theme-toggle:hover, .gh-star:hover { color: var(--title); border-color: var(--muted); }
+.theme-toggle:focus-visible, .gh-star:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Narrow screens: the star link shrinks to the GitHub mark. The text stays for screen readers. */
+@media (max-width: 600px) {
+  .gh-star { padding: 0; width: calc(1.55em + .3rem + 2px); height: calc(1.55em + .3rem + 2px); justify-content: center; }
+  .gh-star span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}
 
 /* ---------- Scroll ring (scroll-ring.js) ---------- */
 
