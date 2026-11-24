@@ -15,6 +15,7 @@
 <nav class="course">
   <a href="../index.html">Course index</a>
   <a href="0011-pii-guardrails.html">← Lesson 11</a>
+  <a href="0013-on-prem-inference.html">Lesson 13 →</a>
   <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
   <a href="../reference/jargon.html">Jargon decoder</a>
 </nav>
@@ -37,7 +38,7 @@
   <tbody>
     <tr><td>Your cloud, a provider's API (Acme)</td><td>At the model provider</td><td>Every request, masked</td><td>Everything</td></tr>
     <tr><td>The customer's VPC, their cloud's model service</td><td>At the cloud provider, reached by a private endpoint</td><td>Nothing over the internet. Read what the cloud keeps.</td><td>What their cloud roles allow</td></tr>
-    <tr><td>The customer's VPC or data centre, their own GPUs</td><td>On their hardware (<a href="#up-next">Lesson 13</a>)</td><td>Nothing, if outbound traffic is denied</td><td>Through their VPN, if they let you</td></tr>
+    <tr><td>The customer's VPC or data centre, their own GPUs</td><td>On their hardware (<a href="0013-on-prem-inference.html">Lesson 13</a>)</td><td>Nothing, if outbound traffic is denied</td><td>Through their VPN, if they let you</td></tr>
     <tr><td>Air-gapped</td><td>On their hardware, or in a cloud region built for classified work</td><td>Nothing. Releases come in on media.</td><td>Nothing. Their staff run your runbook.</td></tr>
   </tbody>
 </table>
@@ -87,7 +88,7 @@ spec:
 
 <p><strong>Where the model runs.</strong> There is no provider API on the high side. That leaves two options:</p>
 <ul>
-  <li><strong>An open-weight model on the customer's own GPUs.</strong> The weights arrive on the media like any other file. Choosing and serving one is <a href="#up-next">Lesson 13</a>.</li>
+  <li><strong>An open-weight model on the customer's own GPUs.</strong> The weights arrive on the media like any other file. Choosing and serving one is <a href="0013-on-prem-inference.html">Lesson 13</a>.</li>
   <li><strong>A cloud built for classified work, if the customer's government accredits one.</strong> In the US, AWS describes its Top Secret Region as "the first air-gapped commercial cloud"; Microsoft offers "dedicated US air-gapped regions" for Secret and Top Secret data; and Google Distributed Cloud air-gapped "is built to remain disconnected in perpetuity", with Gemini generally available on it since August 2025.<span class="sn-ref"></span><span class="sidenote numbered">AWS, <a href="https://aws.amazon.com/blogs/publicsector/announcing-the-new-aws-secret-region/">"Announcing the New AWS Secret Region"</a>; Microsoft, <a href="https://azure.microsoft.com/en-us/solutions/government">"Azure for US Government"</a>; Google Cloud, <a href="https://cloud.google.com/distributed-cloud-air-gapped">"Google Distributed Cloud air-gapped"</a> and <a href="https://cloud.google.com/blog/topics/hybrid-cloud/gemini-is-now-available-anywhere">"Run Gemini anywhere"</a> (28 August 2025).</span> Anthropic says its Claude Gov models "are already deployed by agencies at the highest level of U.S. national security", with access "limited to those who operate in such classified environments".<span class="sn-ref"></span><span class="sidenote numbered">Anthropic, <a href="https://www.anthropic.com/news/claude-gov-models-for-u-s-national-security-customers">"Claude Gov models for U.S. national security customers"</a> (6 June 2025). Earlier, Palantir announced Claude <a href="https://investors.palantir.com/news-details/2024/Anthropic-and-Palantir-Partner-to-Bring-Claude-AI-Models-to-AWS-for-U.S.-Government-Intelligence-and-Defense-Operations/">"hosted on Palantir's Impact Level 6 (IL6) accredited environment"</a> (November 2024). IL6 "is reserved for the storage and processing of information classified up to the SECRET level" (<a href="https://learn.microsoft.com/en-us/azure/compliance/offerings/offering-dod-il6">Microsoft Learn</a>).</span> These are US programmes. Torvik is European, so its security team, not you, says which of them, if any, it may use.</li>
 </ul>
 
@@ -373,7 +374,7 @@ Running now: 1.11.2. Migrations: 0001, 0002, 0003, 0004, 0005, 0006.</code></pre
   <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
 </div>
 
-<p class="small" id="up-next">Up next (planned): <strong>Lesson 13, Edge and on-prem inference</strong> (Stage 8, specialist). Today the model was a file called <code>weights.bin</code> that arrived on a disk. Lesson 13 is about running it: choosing a model that fits the customer's GPUs, serving it, and checking it still passes the golden set after it's made smaller. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
+<p class="small" id="up-next">Up next: <strong><a href="0013-on-prem-inference.html">Lesson 13, Edge and on-prem inference</a></strong> (Stage 8, specialist). Today the model was a file called <code>weights.bin</code> that arrived on a disk. Lesson 13 is about running it: choosing a model that fits the customer's GPUs, serving it, and checking it still passes the golden set after it's made smaller. Keep the <a href="../reference/fde-roadmap-map.html">roadmap reference</a> open while you work.</p>
 
 </main>
 <script src="../assets/quiz.js"></script>

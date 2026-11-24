@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lesson 13 · Edge and on-prem inference</title>
+<link rel="stylesheet" href="../assets/course.css">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0012-air-gapped-and-vpc.html">← Lesson 12</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Lesson 13 · Stage 8 (specialist) · about 60 minutes</p>
+<h1>Edge and on-prem inference</h1>
+<p class="subtitle">In Lesson 12, Torvik's release gate let a file called <code>weights.bin</code> onto the high side. Now someone has to run it. There is no model provider behind the agent any more: just one server in Torvik's machine room, two GPUs, and Mats, the engineer who looks after them. This lesson is the work a provider used to do for you: choosing the model, fitting it in memory, serving it, and proving it's still good enough.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>A sizing and acceptance script, in TypeScript, that picks which of four versions of an open-weight model Torvik runs. It does the memory sums for weights and KV cache on Torvik's two GPUs, writes the exact <code>vllm serve</code> command with nothing left to defaults, and refuses any version that got a single golden-set case wrong or is too slow at the busiest hour. Then the one-page sizing memo Mats and Ingrid sign off.</p>
+</div>
+
+<h2>1 · Four jobs the provider used to do</h2>
+
+<p>When the agent called a model provider's API, four questions had answers before you asked them. On Torvik's high side, they're yours:</p>
+<table>
+  <thead><tr><th>Question</th><th>With a provider</th><th>On Torvik's GPUs</th></tr></thead>
+  <tbody>
+    <tr><td>May we use this model for this work?</td><td>The provider's terms, signed once</td><td>Each model's own licence (section 2)</td></tr>
+    <tr><td>Does it fit?</td><td>Not your problem</td><td>Weights plus KV cache, in the GPUs Torvik owns (section 3)</td></tr>
+    <tr><td>How is it served?</td><td>An API that already works</td><td>A model server you configure, flag by flag (section 4)</td></tr>
+    <tr><td>Is it still good?</td><td>The provider tests its own models</td><td>Your golden set, on the exact version you'll run (section 5)</td></tr>
+  </tbody>
+</table>
+<p>The roadmap calls this stage "edge and on-prem" because the same questions come in two sizes. <strong>On-prem</strong> is Torvik's case: a server in a customer's machine room, serving many people. <strong>Edge</strong> is a device near the work, such as a laptop on a ship with no connection. For that size the usual tool is llama.cpp, whose "main goal … is to enable LLM (and MLLM) inference with minimal setup and state-of-the-art performance on a wide range of hardware - locally and in the cloud". It "requires the model to be stored in the GGUF file format".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://github.com/ggml-org/llama.cpp">llama.cpp README</a> and <a href="https://github.com/ggml-org/llama.cpp/blob/master/docs/models.md">docs/models.md</a>, checked November 2026. Ollama, built on it, describes itself as a way to "Start building with open models. Access the latest releases locally or in the cloud with complete privacy" (<a href="https://github.com/ollama/ollama">Ollama README</a>).</span> The questions are the same on a laptop, and the numbers are just smaller. Today uses the bigger size, with vLLM, an open-source model server built for GPUs and many users.</p>
+
+<h2>2 · Open weights, but not open for every use</h2>
+
+<p>"Open-weight" means you can download the weights. It doesn't mean you may use them for anything. Torvik builds sonar parts for navies, so the first filter isn't technical.</p>
+<ul>
+  <li><strong>Some licences forbid defence work.</strong> Meta's acceptable use policy for Llama 4 forbids uses "that present a risk of death or bodily harm to individuals, including use of Llama 4 related to the following: a. Military, warfare, nuclear industries or applications, espionage, use for materials or activities that are subject to the International Traffic Arms Regulations (ITAR)".<span class="sn-ref"></span><span class="sidenote numbered">Meta, <a href="https://developer.meta.com/ai/llama4/use-policy/">"Llama 4 Acceptable Use Policy"</a>, section 2, checked November 2026. llama.com now redirects to dev.meta.ai, and llama.com/use-policy shows the older Llama 2 policy. Read the one for the model you'd run.</span></li>
+  <li><strong>Exceptions live in blog posts, not in the licence.</strong> In November 2024 Meta said it was "making Llama available to U.S. government agencies, including those that are working on defense and national security applications, and private sector partners supporting their work". In September 2025 it extended this to the Five Eyes partners and to "France, Germany, Italy, Japan, and South Korea, as well as NATO and European Union institutions".<span class="sn-ref"></span><span class="sidenote numbered">Meta, <a href="https://about.fb.com/news/2024/11/open-source-ai-america-global-security/">"Open Source AI Can Help America Lead in AI and Strengthen Global Security"</a> (4 November 2024) and <a href="https://about.fb.com/news/2025/09/strengthening-us-national-security-by-making-llama-available-to-key-allies/">"Strengthening US National Security by Making Llama Available to Key Allies"</a> (23 September 2025).</span> Torvik is a Norwegian company. Norway isn't on that list, and a company that supplies navies isn't a NATO institution. The policy text still says "Military, warfare". That is a question for Torvik's lawyers and Meta, in writing, not for you.</li>
+  <li><strong>Many strong models use Apache 2.0.</strong> Qwen3, the Apache-licensed <span class="no-terms">Mistral Small</span> models, OpenAI's gpt-oss and Google's Gemma 4 all say <code>license: apache-2.0</code> on their model cards. Older Gemma models stay on Google's own Gemma Terms.<span class="sn-ref"></span><span class="sidenote numbered">Model cards: <a href="https://huggingface.co/Qwen/Qwen3-32B">Qwen3-32B</a>, <a href="https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506">Mistral Small 3.2</a>, <a href="https://huggingface.co/openai/gpt-oss-120b">gpt-oss-120b</a>. Google, <a href="https://gemma.ai/resources/terms/">"Gemma Terms of Use"</a> (last modified 1 April 2026): "For Gemma 4 terms, see the Gemma 4 license", which links to Apache 2.0.</span> The licence grants "a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license to reproduce, prepare Derivative Works of, publicly display, publicly perform, sublicense, and distribute the Work", with no list of forbidden uses.<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://www.apache.org/licenses/LICENSE-2.0.txt">Apache License, Version 2.0</a>, section 2. Section 3 grants patents in similar words.</span></li>
+</ul>
+<p>Two more things belong in the same conversation. A licence isn't the only rule: export controls and Torvik's contracts apply too. And the law around AI may not work the way you'd guess. The EU AI Act "does not apply to AI systems where and in so far they are placed on the market, put into service, or used with or without modification exclusively for military, defence or national security purposes".<span class="sn-ref"></span><span class="sidenote numbered"><a href="https://eur-lex.europa.eu/legal-content/EN/TXT/HTML/?uri=OJ:L_202401689">Regulation (EU) 2024/1689</a> (the AI Act), Article 2(3). Norway is outside the EU but in the EEA. Whether and when the Act applies there is another question for Torvik's lawyers.</span> Note the word "exclusively". A support agent that also helps Torvik's civilian customers may not be exclusive. Your job is to bring these questions up early, with the model card and the licence text in hand, and to write down who answered them.</p>
+<p>Torvik's lawyers cleared one family: Skerry, an Apache 2.0 model. (Skerry is made up for this course. It's shaped like Qwen3-32B, so its numbers are realistic.) Four versions of it crossed the gap in Lesson 12's bundles.</p>
+
+<h2>3 · Will it fit? Weights, then the KV cache</h2>
+
+<p>NVIDIA's guide to inference names "the two main contributors to the GPU LLM memory requirement": "model weights and the KV cache".<span class="sn-ref"></span><span class="sidenote numbered">NVIDIA Technical Blog, <a href="https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/">"Mastering LLM Techniques: Inference Optimization"</a> (17 November 2023).</span></p>
+
+<p><strong>Weights</strong> are the easy part: parameters times bytes per parameter. NVIDIA's example: "a model with 7 billion parameters (such as Llama 2 7B), loaded in 16-bit precision (FP16 or BF16) would take roughly 7B * sizeof(FP16) ~= 14 GB in memory." A 32-billion-parameter model in BF16 needs about 64 GB, in FP8 about half, and in INT4 about a quarter, plus some extra for the numbers that undo the scaling.</p>
+
+<p><strong>The KV cache</strong> is the part teams forget. For every token of every request in progress, each layer keeps a key and a value, so the model doesn't recompute the whole conversation for each new word. NVIDIA's formula: "Size of KV cache per token in bytes = 2 * (num_layers) * (num_heads * dim_head) * precision_in_bytes". It grows "linearly with batch size and sequence length". One detail changes the answer a lot: most current models use grouped-query attention, which has "an intermediate (more than one, less than number of query heads) number of key-value heads".<span class="sn-ref"></span><span class="sidenote numbered">Ainslie et al., <a href="https://arxiv.org/abs/2305.13245">"GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints"</a> (arXiv 2305.13245). NVIDIA's guide: "Optimizations like MQA and GQA help reduce the memory required by KV caches by reducing the number of key and value heads that are stored."</span> So in the formula, <code>num_heads</code> means the KV heads.</p>
+
+<p>Every number you need is in the model's <code>config.json</code>. Qwen3-32B's says <code>"num_hidden_layers": 64</code>, <code>"num_attention_heads": 64</code>, <code>"num_key_value_heads": 8</code>, <code>"head_dim": 128</code>, <code>"torch_dtype": "bfloat16"</code>.<span class="sn-ref"></span><span class="sidenote numbered">Qwen, <a href="https://huggingface.co/Qwen/Qwen3-32B/blob/main/config.json">Qwen3-32B config.json</a>. Its model card: "Number of Attention Heads (GQA): 64 for Q and 8 for KV". Newer hybrid models break the simple formula: Qwen's <a href="https://huggingface.co/Qwen/Qwen3.8-27B/blob/main/config.json">Qwen3.8-27B</a> lists <code>layer_types</code>, and only 16 of its 64 layers are <code>full_attention</code> with a KV cache. Read the whole config.</span> So, in BF16:</p>
+<figure class="code"><figcaption>KV cache per token, Qwen3-32B (and Skerry-32B)</figcaption><pre><code>2 (key and value) × 64 layers × 8 KV heads
+  × 128 (head_dim) × 2 bytes   = 262,144 bytes per token
+
+<span class="c">× 16,384 tokens: one long conversation</span>     ≈  4.3 GB
+<span class="c">× 16 conversations: Torvik's busiest hour</span>  ≈ 68.7 GB
+<span class="c">× 8, if you used the 64 attention heads</span>   ≈  550 GB</code></pre></figure>
+<p>At Torvik's busiest hour, the KV cache is bigger than the BF16 weights. That's normal for a model serving many people. A sizing that only counts the weights is wrong in exactly the situation that matters.</p>
+
+<p><strong>The budget.</strong> gpu-01 has two NVIDIA L40S cards, "48GB GDDR6 with ECC" each, with "Fourth-generation Tensor Cores with support for FP8".<span class="sn-ref"></span><span class="sidenote numbered">NVIDIA, <a href="https://www.nvidia.com/en-us/data-center/l40s/">"NVIDIA L40S"</a> product page. NVIDIA's <a href="https://developer.nvidia.com/cuda/gpus">CUDA GPUs</a> list gives the L40S compute capability 8.9.</span> vLLM may not use all of it. Its <code>--gpu-memory-utilization</code> is "The fraction of GPU memory to be used for the model executor, which can range from 0 to 1". If you don't set it, it's "1.0 with the extensible KV cache (sized from measured memory) and 0.92 otherwise", and the docs say to "leave this unset unless something needs memory that vLLM does not measure".<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/configuration/engine_args/">"Engine Arguments"</a>, checked November 2026 (latest release v0.34.0). Many guides still say the default is 0.9. It changed.</span> Mats runs GPU monitoring tools on the same cards, so he sets 0.9. vLLM also measures some memory of its own beyond weights and cache (on gpu-01, 2.5 GB per GPU). With two cards: 0.9 × 48 × 2 = 86.4 GB, minus 5 GB.</p>
+
+<p><strong>Making it smaller.</strong> Quantization stores the weights, the KV cache, or both, in fewer bits. The evidence says it costs less quality than people fear. One study ran "over 500,000 evaluations" and found that "FP8 (W8A8-FP) is effectively lossless across all model scales", and that INT4 weight-only "is more competitive than expected, rivaling 8-bit quantization".<span class="sn-ref"></span><span class="sidenote numbered">Kurtic et al., <a href="https://arxiv.org/abs/2411.02355">"'Give Me BF16 or Give Me Death'? Accuracy-Performance Trade-Offs in LLM Quantization"</a> (arXiv 2411.02355, revised May 2026), on the Llama 3.1 family. AWQ, one INT4 method, "finds that not all weights in an LLM are equally important" (<a href="https://arxiv.org/abs/2306.00978">arXiv 2306.00978</a>).</span> vLLM: FP8 gives "a 2x reduction in model memory requirements and up to a 1.6x improvement in throughput with minimal impact on accuracy". It needs the right chip: "FP8 computation is supported on NVIDIA GPUs with compute capability &gt;= 8.9", which includes the L40S.<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/features/quantization/llm_compressor/fp8/">"FP8 W8A8"</a>. Older cards run FP8 models "as weight-only W8A16". The <a href="https://docs.vllm.ai/en/latest/features/quantization/">quantization index</a> lists which method runs on which GPU generation.</span> The KV cache can be FP8 too, which "can significantly reduce its memory footprint". Without a <span class="no-terms">calibration</span> step, "All quantization scales are set to <code>1.0</code>", so test it like anything else.<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/features/quantization/quantized_kvcache/">"Quantized KV Cache"</a>.</span></p>
+
+<p>Here are the sums for gpu-01, with 16 conversations of 16,384 tokens and an 86.4 GB budget (5 GB of it is overhead):</p>
+<table>
+  <thead><tr><th>Version</th><th>Weights</th><th>+ KV cache in BF16</th><th>+ KV cache in FP8</th></tr></thead>
+  <tbody>
+    <tr><td>skerry-32b (BF16)</td><td>65.6 GB</td><td>139.3 GB: no</td><td>105.0 GB: no</td></tr>
+    <tr><td>skerry-32b-fp8</td><td>33.4 GB</td><td>107.1 GB: no</td><td>72.8 GB: fits</td></tr>
+    <tr><td>skerry-32b-awq (INT4)</td><td>19.4 GB</td><td>93.1 GB: no</td><td>58.8 GB: fits</td></tr>
+    <tr><td>skerry-14b (BF16)</td><td>29.5 GB</td><td>86.0 GB: just fits</td><td>60.3 GB: fits</td></tr>
+  </tbody>
+</table>
+<p>The full-precision model doesn't fit for 16 people. It does fit for one conversation at a time, and that's all a reference run needs (section 5).</p>
+
+<h2>4 · Serving it: every setting on the command line</h2>
+
+<p>vLLM "provides an HTTP server that implements OpenAI's Completions API, Chat API, and more", and its own example points the official OpenAI client at <code>base_url="http://localhost:8000/v1"</code>.<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/serving/online_serving/openai_compatible_server/">"OpenAI-Compatible Server"</a>. The same page warns that <code>--api-key</code> doesn't cover every endpoint: "Do not rely on <code>--api-key</code> alone to secure vLLM." On the high side, Lesson 12's NetworkPolicy decides who can reach port 8000.</span> That's why the agent's code barely changes: it calls <code>http://llm.torvik.internal:8000/v1</code>, the address on Lesson 12's egress list. What changes is the command that starts the server. Each memory sum in section 3 is a setting, and anything you don't set takes vLLM's default, not your plan.</p>
+<table>
+  <thead><tr><th>Flag</th><th>What vLLM says</th><th>Leave it out, and…</th></tr></thead>
+  <tbody>
+    <tr><td><code>vllm serve &lt;dir&gt;</code></td><td>"in a local directory, simply pass directory path to … <code>vllm serve &lt;MODEL_DIR&gt;</code>"<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/models/supported_models/">"Supported Models"</a>: "By default, vLLM loads models from Hugging Face (HF) Hub."</span></td><td>A hub name means a download attempt: a blocked connection on the high side. Set <code>HF_HUB_OFFLINE=1</code> as well (<a href="0012-air-gapped-and-vpc.html">Lesson 12</a>).</td></tr>
+    <tr><td><code>--tensor-parallel-size</code></td><td>"if the model is too large for a single GPU but fits on a single node with multiple GPUs, use <em>tensor parallelism</em>"<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/serving/parallelism_scaling/">"Parallelism and Scaling"</a>. vLLM also checks that the "Total number of attention heads … must be divisible by tensor parallel size" (<a href="https://github.com/vllm-project/vllm/blob/main/vllm/config/model.py">vllm/config/model.py</a>).</span></td><td>Default 1: one card, half the budget.</td></tr>
+    <tr><td><code>--max-model-len</code></td><td>"Model context length (prompt and output). If unspecified, will be automatically derived from the model config."</td><td>Qwen3-32B's config says 40,960 tokens, so each request reserves room for 40,960, not 16,384.</td></tr>
+    <tr><td><code>--kv-cache-dtype</code></td><td>"If "auto", will use model data type."</td><td>A BF16 cache, twice the size you counted.</td></tr>
+    <tr><td><code>--gpu-memory-utilization</code></td><td>See section 3.</td><td>1.0: the monitoring tools lose their share.</td></tr>
+    <tr><td><code>--served-model-name</code></td><td>"If not specified, the model name will be the same as the <code>--model</code> argument."</td><td>The agent asks for <code>torvik-support</code> and gets <span class="no-terms">"The model `torvik-support` does not exist."</span></td></tr>
+    <tr><td><code>--enable-auto-tool-choice</code> and <code>--tool-call-parser</code></td><td>The first is "<strong>mandatory</strong>"; the second picks the parser that reads this model family's tool calls<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/features/tool_calling/">"Tool Calling"</a>. On Qwen-style models: "you can use the <code>hermes</code> parser". Without one, the request fails with <span class="no-terms">'"auto" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set'</span> (vLLM source).</span></td><td>Every request that sends tools fails with HTTP 400. Half of Torvik's golden set uses tools.</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Read the start-up log.</strong> vLLM tells you what it could fit. One line gives "an estimate of how many requests can be served concurrently if each request requires the specified number of tokens".<span class="sn-ref"></span><span class="sidenote numbered">vLLM, <a href="https://docs.vllm.ai/en/latest/serving/parallelism_scaling/">"Parallelism and Scaling"</a>, on the log line <span class="no-terms">"Maximum concurrency for 40,960 tokens per request: 15.70x"</span>.</span> If even one request doesn't fit, vLLM refuses to start: "To serve at least one request with the model's max seq len (…), (… GiB KV cache is needed, which is larger than the available KV cache memory (… GiB)."<span class="sn-ref"></span><span class="sidenote numbered">vLLM source, <a href="https://github.com/vllm-project/vllm/blob/main/vllm/v1/core/kv_cache_planning.py">vllm/v1/core/kv_cache_planning.py</a>. Note GiB: vLLM counts in 2^30 bytes, while datasheets and file sizes usually count in GB, 10^9 bytes.</span> The opposite case is worse: a server that starts fine and has room for 11 of the 16 conversations. Nothing fails. The other five just wait.</p>
+
+<h2>5 · Is it still good? The golden set and the busy hour</h2>
+
+<p><strong>Against what?</strong> In <a href="0008-evals-on-customer-data.html">Lesson 8</a> you compared a new version of the agent with the one in production. Here, the full-precision model is the reference. It can't serve 16 people on gpu-01, but it can answer the golden set one conversation at a time. Then each smaller version answers the same 12 cases, three times each, through the server exactly as it'll be configured. That means the same flags, so a missing tool parser shows up here and not on the first day of production.</p>
+<p><strong>Averages hide the case that matters.</strong> The study above reports accuracy averaged over benchmarks. Your customer reads one answer at a time. On Torvik's golden set, the INT4 version scored higher than the reference on average: 33 of 36 runs passed, against 32. But in one run of T-07 it gave the torque for the TR-40's mounting bolts as 2.58 Nm instead of 2.85. Lesson 8's rule catches that: a case that passed every run before and fails any run now is a regression, whatever the average says. A wrong torque on a sonar mount is the kind of mistake Torvik's engineers would act on.</p>
+<p><strong>Fast alone isn't fast.</strong> Measure speed the way users feel it. "Time to first token (TTFT) measures how long you wait before seeing the model's output", and it "generally includes request queuing time, prefill time, and network latency". Load changes it: "As the number of concurrent requests increases, total system TPS increases while TPS per user decreases as latency increases."<span class="sn-ref"></span><span class="sidenote numbered">NVIDIA NIM, <a href="https://docs.nvidia.com/nim/benchmarking/llm/metrics">"LLM Inference Benchmarking: Metrics"</a>. TPS is tokens per second.</span> So run a load test at Torvik's peak, 16 conversations with long prompts, and read the p95, not the average. Mats tried the FP8 model with a BF16 cache: 0.51 s alone, 6.58 s at 16. vLLM had room for 11 conversations, so the rest queued behind them.</p>
+
+<h2>6 · Build it</h2>
+
+<p>The exercise lives in <code>exercises/0013-inference/</code>. The top of <code>harness.ts</code> describes gpu-01, Torvik's needs, the four Skerry versions with their <code>config.json</code> fields, the reference grades, and Mats's log of last week's trials. It also has a stand-in for vLLM: it has no GPU and no model, but it starts from your command line using vLLM's rules and messages, then plays back what Torvik measured. You write three functions: <code>fit()</code>, <code>serveCommand()</code> and <code>accept()</code>.</p>
+
+<p><code>start.ts</code> is the sizing most teams do first:</p>
+<figure class="code"><figcaption>exercises/0013-inference/start.ts</figcaption><pre><code><span class="c">// "Two cards with 48 GB each is 96 GB. If the weights fit, the model fits."</span>
+const fits = m.weights_bytes / GB &lt; GPUS.count * GPUS.memory_gb;
+
+<span class="c">// The command from the model card's quick start.</span>
+return { argv: ["vllm", "serve", m.hub_id], env: {} };
+
+<span class="c">// "If it scores at least as well, and it's fast, ship it."</span>
+const ship = rate(trial.grades) &gt;= rate(reference)
+  &amp;&amp; alone &lt;= NEEDS.ttft_p95_s;</code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0013-inference/start.ts</figcaption><pre><code>FAIL  Counts the KV cache, per token
+      skerry-32b KV auto: 0 bytes; skerry-14b KV auto: 0 bytes; skerry-32b-fp8 KV fp8: 0 bytes (want 262,144, 196,608, 131,072)
+FAIL  Fits weights, overhead and KV cache in the budget
+      skerry-32b-fp8 TP 1 KV fp8: Infinityx, fits (want 3.4x, doesn't fit); skerry-32b-awq TP 2 KV auto: Infinityx, fits (want 14.4x, doesn't fit); skerry-14b TP 2 KV auto: Infinityx, fits (want 16.1x, fits); skerry-32b-fp8 TP 2 KV fp8: Infinityx, fits (want 22.4x, fits)
+FAIL  Boots with the settings you sized
+      started with TP 1, KV auto, max_model_len 40960, utilization 1; "GPU KV cache size: 46,157 tokens, Maximum concurrency for 40,960 tokens per request: 1.13x" (want TP 2, KV fp8, max_model_len 16384, 0.9, and at least 16x)
+FAIL  Serves from the image, offline
+      model skerry-ai/Skerry-32B-Instruct-FP8, HF_HUB_OFFLINE=(unset), outbound attempts: 1 (https://huggingface.co/api/models/skerry-ai/Skerry-32B-Instruct-FP8) (want /models/skerry-32b-instruct-fp8, HF_HUB_OFFLINE=1, and 0 attempts)
+FAIL  The agent's requests still work
+      36 of 36 golden-set requests failed; T-01: 404: The model `torvik-support` does not exist. Valid aliases: skerry-ai/Skerry-32B-Instruct-FP8. (want 0: the model name the agent asks for, and its tool calls)
+FAIL  No case got worse
+      skerry-32b-awq · TP 2 · KV fp8 -&gt; ship (regressions: none); skerry-32b-fp8 · TP 2 · KV fp8 -&gt; ship (want the first refused for T-07 alone, the second shipped)
+FAIL  Fast enough at Torvik's peak
+      skerry-32b-fp8 · TP 2 · KV auto (p95 0.51 s alone, 6.58 s at 16) -&gt; ship (want refused, with a reason naming the 16 conversations)
+
+0/7 checks pass.</code></pre></figure>
+
+<p>Read check 3 again. The server started. Nothing crashed. It just has room for 1.13 conversations, because the command left the GPU count, the context length and the cache format to vLLM's defaults. That's the failure that reaches production, because a server that refuses to start gets noticed and this one doesn't.</p>
+
+<p>Fix <code>start.ts</code>. The TODO list in the file follows the checks. Give yourself 35 minutes before you open the solution.</p>
+<ol>
+  <li>KV cache per token: 2 × layers × <em>KV</em> heads × <code>head_dim</code> × bytes (2 for <code>auto</code>, 1 for <code>fp8</code>).</li>
+  <li>The budget is <code>gpu_memory_utilization</code> of each GPU used. Take off all the weights, and the overhead for each GPU. Then work out how many full-length requests fit in what's left.</li>
+  <li>Put every setting you sized on the command line.</li>
+  <li>Serve the folder in the image, and set <code>HF_HUB_OFFLINE=1</code>.</li>
+  <li>Add the name the agent asks for, and the tool flags with the model card's parser.</li>
+  <li>Refuse any regression, or any failed request, whatever the average.</li>
+  <li>Read the p95 at Torvik's peak, and give a reason for every refusal.</li>
+</ol>
+
+<p>The full solution is in <code>solution.ts</code>. The memory sum is short once you know what to count:</p>
+<figure class="code"><figcaption>exercises/0013-inference/solution.ts · fit()</figcaption><pre><code>const bytes = s.kv_cache_dtype === "fp8" ? 1 : 2;
+const kv_bytes_per_token =
+  2 * c.num_hidden_layers * c.num_key_value_heads * c.head_dim * bytes;
+
+const gpus = s.tensor_parallel_size;
+const budget_gb = s.gpu_memory_utilization * GPUS.memory_gb * gpus;
+const kv_room_gb =
+  budget_gb - m.weights_bytes / GB - OVERHEAD_GB_PER_GPU * gpus;
+const max_concurrency =
+  (kv_room_gb * GB) / (kv_bytes_per_token * s.max_model_len);
+<span class="c">// fits: max_concurrency &gt;= NEEDS.concurrency</span></code></pre></figure>
+
+<figure class="code"><figcaption>bun exercises/0013-inference/solution.ts</figcaption><pre><code>PASS  Counts the KV cache, per token
+      skerry-32b KV auto: 262,144 bytes; skerry-14b KV auto: 196,608 bytes; skerry-32b-fp8 KV fp8: 131,072 bytes (want 262,144, 196,608, 131,072)
+PASS  Fits weights, overhead and KV cache in the budget
+      skerry-32b-fp8 TP 1 KV fp8: 3.4x, doesn't fit (want 3.4x, doesn't fit); skerry-32b-awq TP 2 KV auto: 14.4x, doesn't fit (want 14.4x, doesn't fit); skerry-14b TP 2 KV auto: 16.1x, fits (want 16.1x, fits); skerry-32b-fp8 TP 2 KV fp8: 22.4x, fits (want 22.4x, fits)
+PASS  Boots with the settings you sized
+      started with TP 2, KV fp8, max_model_len 16384, utilization 0.9; "GPU KV cache size: 366,210 tokens, Maximum concurrency for 16,384 tokens per request: 22.35x" (want TP 2, KV fp8, max_model_len 16384, 0.9, and at least 16x)
+PASS  Serves from the image, offline
+      model /models/skerry-32b-instruct-fp8, HF_HUB_OFFLINE=1, outbound attempts: 0 (want /models/skerry-32b-instruct-fp8, HF_HUB_OFFLINE=1, and 0 attempts)
+PASS  The agent's requests still work
+      0 of 36 golden-set requests failed (want 0: the model name the agent asks for, and its tool calls)
+PASS  No case got worse
+      skerry-32b-awq · TP 2 · KV fp8 -&gt; don't ship (regressions: T-07); skerry-32b-fp8 · TP 2 · KV fp8 -&gt; ship (want the first refused for T-07 alone, the second shipped)
+PASS  Fast enough at Torvik's peak
+      skerry-32b-fp8 · TP 2 · KV auto (p95 0.51 s alone, 6.58 s at 16) -&gt; don't ship: p95 time to first token is 6.58 s at 16 conversations (target 2 s) (want refused, with a reason naming the 16 conversations)
+
+7/7 checks pass.
+
+What your functions choose for gpu-01, smallest weights first:
+  skerry-32b-awq  TP 2 · KV fp8: no (T-07 passed every run before and fails now)
+  skerry-14b      TP 2 · KV auto: no (T-03 passed every run before and fails now; T-07 passed every run before and fails now; T-11 passed every run before and fails now; fewer cases pass every run than before)
+  skerry-32b-fp8  TP 2 · KV fp8: SHIP
+
+Mats's start-up command for gpu-01:
+  HF_HUB_OFFLINE=1 vllm serve /models/skerry-32b-instruct-fp8 --served-model-name torvik-support --tensor-parallel-size 2 --max-model-len 16384 --kv-cache-dtype fp8 --gpu-memory-utilization 0.9 --enable-auto-tool-choice --tool-call-parser hermes
+  Memory, both GPUs: 86.4 GB budget = 33.4 GB weights + 5.0 GB overhead + 48.0 GB left for the KV cache. 16 conversations of 16,384 tokens need 34.4 GB of it.
+  vllm: Model loading took 15.55 GiB of memory per GPU (tensor parallel size 2)
+  vllm: Available KV cache memory: 44.70 GiB
+  vllm: GPU KV cache size: 366,210 tokens, Maximum concurrency for 16,384 tokens per request: 22.35x</code></pre></figure>
+
+<p>The smallest version is turned down for one torque value. The cheaper 14B fits, just, but gets three cases wrong. The FP8 version, with an FP8 cache, passes every case the reference passed, and one more, and it has room for 22 conversations, with 16 needed. It's not the biggest model or the fastest one. It's the smallest version that's as good as the reference.</p>
+
+<p>Try three experiments in a copy of <code>solution.ts</code>. Replace <code>c.num_key_value_heads</code> with <code>c.num_attention_heads</code>: the cache looks 8 times bigger, checks 1 and 2 fail, and nothing fits at all. Undo that, and delete <code>"--kv-cache-dtype", s.kv_cache_dtype,</code> from the command: only check 3 fails, because the server you sized isn't the server that starts. Undo that too, and make <code>accept()</code> skip the regressions: only check 6 fails, and the search ships the INT4 version with the wrong torque.</p>
+
+<h2>7 · May Torvik run it?</h2>
+
+<p>Before any sizing, Torvik's lawyers will ask you about each model you put forward. For each card, decide whether you can go ahead, or must stop and get a written answer first. (These are the licences as they read in November 2026. Check again before you rely on them.)</p>
+
+<script type="application/json" data-sort="l13-licence">
+{
+  "buckets": ["Go ahead: the licence allows it", "Stop: get a written answer first"],
+  "items": [
+    { "label": "Qwen3-32B", "detail": "Model card: license: apache-2.0.", "bucket": 0,
+      "why": "Apache 2.0 grants \"a perpetual, worldwide, non-exclusive, no-charge, royalty-free, irrevocable copyright license\" with no list of forbidden uses (<a href=\"https://www.apache.org/licenses/LICENSE-2.0.txt\">Apache License 2.0</a>). Export rules and Torvik's contracts still apply, but the licence isn't in the way." },
+    { "label": "Llama 4", "detail": "Meta's acceptable use policy, plus Meta's 2025 post about allies.", "bucket": 1,
+      "why": "The policy forbids \"Military, warfare … espionage\" (<a href=\"https://developer.meta.com/ai/llama4/use-policy/\">Meta</a>). Meta's posts extend defence use to some governments and institutions. Norway isn't named. A blog post isn't a licence amendment: get it in writing." },
+    { "label": "gpt-oss-120b", "detail": "OpenAI's open-weight model. Model card: license: apache-2.0.", "bucket": 0,
+      "why": "\"Permissive Apache 2.0 license\" (<a href=\"https://huggingface.co/openai/gpt-oss-120b\">model card</a>). Same answer as Qwen3." },
+    { "label": "Gemma 4 31B", "detail": "Google's model card says license: apache-2.0.", "bucket": 0,
+      "why": "Google's Gemma Terms page says: \"For Gemma 4 terms, see the Gemma 4 license\", which is Apache 2.0 (<a href=\"https://gemma.ai/resources/terms/\">gemma.ai</a>). Earlier Gemma models are a different card." },
+    { "label": "Gemma 3 27B", "detail": "An earlier Gemma, under Google's own Gemma Terms of Use.", "bucket": 1,
+      "why": "Custom terms with their own prohibited use policy. They may well allow Torvik's use, but that's for Torvik's lawyers to read and confirm, not for you to guess." },
+    { "label": "A fine-tune with no licence file", "detail": "Someone's \"sonar-tuned\" model on a public hub. No LICENSE, no licence line on the card.", "bucket": 1,
+      "why": "No licence doesn't mean free. It means nobody has given you permission. And Lesson 12 applies: you don't know who built it or what it was trained on." },
+    { "label": "Mistral Small 3.2", "detail": "Model card: license: apache-2.0.", "bucket": 0,
+      "why": "Apache 2.0 (<a href=\"https://huggingface.co/mistralai/Mistral-Small-3.2-24B-Instruct-2506\">model card</a>). Check each Mistral model: they don't all use the same licence." },
+    { "label": "A research-only model", "detail": "Licence: \"for non-commercial research purposes only\".", "bucket": 1,
+      "why": "A support agent at a company that sells sonar parts is commercial use. Stop, unless the owner sells a commercial licence, and Torvik buys it." }
+  ]
+}
+</script>
+
+<h2>8 · Check yourself</h2>
+
+<p>Answer from memory, then read every explanation, including the ones you got right.</p>
+
+<script type="application/json" data-quiz="l13-recall">
+{
+  "questions": [
+    { "q": "A model has 64 layers, 64 attention heads, 8 KV heads and head_dim 128. How big is its BF16 KV cache per token?",
+      "options": ["About 256 KiB", "About 2 MiB", "About 64 GB", "About 16 KiB"],
+      "answer": 0,
+      "why": "2 × 64 layers × 8 KV heads × 128 × 2 bytes = 262,144 bytes. Use the KV heads: with the 64 attention heads you'd get 2 MiB, 8 times too much. That's the <a href=\"https://arxiv.org/abs/2305.13245\">grouped-query attention</a> saving." },
+    { "q": "The FP8 weights are 33.4 GB, and two cards give an 86.4 GB budget. What does that tell you on its own?",
+      "options": ["It fits sixteen conversations", "Nothing yet about conversations", "It needs one card", "It will be slow"],
+      "answer": 1,
+      "why": "The KV cache for 16 conversations of 16,384 tokens is 68.7 GB in BF16, more than the weights. \"Growing linearly with batch size and sequence length, the memory requirement can quickly scale\" (<a href=\"https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/\">NVIDIA</a>)." },
+    { "q": "You start vLLM without --max-model-len. What context length does each request get room for?",
+      "options": ["What your prompts need", "Exactly 16,384 tokens always", "The model config's length", "Whatever fits in memory"],
+      "answer": 2,
+      "why": "\"If unspecified, will be automatically derived from the model config\" (<a href=\"https://docs.vllm.ai/en/latest/configuration/engine_args/\">vLLM</a>). For Qwen3-32B that's 40,960 tokens, so fewer requests fit." },
+    { "q": "In November 2026, what does vLLM use on CUDA if you don't set --gpu-memory-utilization?",
+      "options": ["0.9 of each card", "0.5 of each card", "Whatever the operator sets", "1.0, extensible KV cache"],
+      "answer": 3,
+      "why": "\"If unspecified, 1.0 with the extensible KV cache (sized from measured memory) and 0.92 otherwise\" (<a href=\"https://docs.vllm.ai/en/latest/configuration/engine_args/\">vLLM</a>). Older guides say 0.9. Set it yourself if other tools share the GPU." },
+    { "q": "The server starts, but every golden-set case that uses a tool fails with HTTP 400. What's missing?",
+      "options": ["A bigger memory budget", "The tool-call parser flags", "A newer model version", "The served model name"],
+      "answer": 1,
+      "why": "--enable-auto-tool-choice is \"mandatory\", and --tool-call-parser picks the parser (<a href=\"https://docs.vllm.ai/en/latest/features/tool_calling/\">vLLM</a>). Without them: '\"auto\" tool choice requires --enable-auto-tool-choice and --tool-call-parser to be set'." },
+    { "q": "The agent asks for model torvik-support and gets \"The model `torvik-support` does not exist.\" What do you fix?",
+      "options": ["Set --served-model-name to torvik-support", "Download the model again", "Raise the memory share", "Rename the model folder"],
+      "answer": 0,
+      "why": "\"If not specified, the model name will be the same as the --model argument\" (<a href=\"https://docs.vllm.ai/en/latest/configuration/engine_args/\">vLLM</a>), here the folder path. Set the name the agent already uses, and the agent doesn't change." },
+    { "q": "The INT4 version passes 33 of 36 runs, the reference 32. But one T-07 run gives a wrong torque. Ship it?",
+      "options": ["Yes: its average is higher", "Yes: INT4 is near lossless", "No: case T-07 has regressed", "No: INT4 is always worse"],
+      "answer": 2,
+      "why": "Lesson 8's rule: a case that passed every run before and fails any run now is a regression. Studies average over benchmarks; Torvik's engineers read one answer at a time." },
+    { "q": "A trial's p95 time to first token is 0.51 s alone and 6.58 s with 16 conversations. Which number goes in the decision?",
+      "options": ["0.51 s, the model's speed", "6.58 s, at Torvik's peak", "The average of the two", "Neither: measure the throughput instead"],
+      "answer": 1,
+      "why": "TTFT \"generally includes request queuing time\" (<a href=\"https://docs.nvidia.com/nim/benchmarking/llm/metrics\">NVIDIA NIM</a>). With room for 11 conversations, five of the 16 wait. Torvik's target is 2 s at the busiest hour." },
+    { "q": "Why can the reference run use the full BF16 model when it doesn't fit for 16 people?",
+      "options": ["Golden sets need less memory", "It runs on another server", "One conversation at a time", "BF16 compresses itself when needed"],
+      "answer": 2,
+      "why": "One conversation of 16,384 tokens needs about 4.3 GB of KV cache, and with both cards the KV cache has room for about 3.7 of them. The reference only has to answer each case correctly, not serve the busy hour." },
+    { "q": "A Llama model would fit and passes the golden set. Torvik supplies navies. What do you do first?",
+      "options": ["Ship: the weights are public", "Ask Torvik's lawyers, in writing", "Quantize it, avoiding the licence", "Rename it in the image"],
+      "answer": 1,
+      "why": "The Llama 4 policy forbids \"Military, warfare\" uses (<a href=\"https://developer.meta.com/ai/llama4/use-policy/\">Meta</a>). Meta's exceptions are in blog posts and name specific countries. Open weights aren't permission." },
+    { "q": "From Lesson 12: the vllm command names the model skerry-ai/Skerry-32B-Instruct-FP8, a hub id. What happens on the high side?",
+      "options": ["It loads from the image", "Ingrid sees blocked connection attempts", "vLLM finds a local mirror", "Nothing: the names are interchangeable"],
+      "answer": 1,
+      "why": "\"By default, vLLM loads models from Hugging Face (HF) Hub\" (<a href=\"https://docs.vllm.ai/en/latest/models/supported_models/\">vLLM</a>). Serve the folder in the image, and set HF_HUB_OFFLINE=1 so nothing tries." },
+    { "q": "From Lesson 8: what does pass^k measure, with k runs per case?",
+      "options": ["Cases right at least once", "The share of passing runs", "Cases right in every run", "The best run per case"],
+      "answer": 2,
+      "why": "pass^k is the share of cases the agent gets right in all k tries: what a customer sees every time. The FP8 version reached 11 of 12; the reference 10." }
+  ]
+}
+</script>
+
+<h2>9 · Write the sizing memo</h2>
+
+<p>Mats runs gpu-01, and Ingrid signs off what runs on the high side. Neither of them was in the room for your tests. Write the memo they'll keep with the system's records: what runs, why it fits, and how to tell when it stops fitting. It saves as you type.</p>
+
+<script type="application/json" data-practice="l13-memo">
+{
+  "title": "For Mats and Ingrid: the model on gpu-01, and why",
+  "maxWords": 250,
+  "fields": [
+    { "key": "what", "label": "What runs", "hint": "The model, its version and format, its licence, and who cleared the licence." },
+    { "key": "fit", "label": "Why it fits", "hint": "The sum: budget, weights, overhead, KV cache for how many conversations of how many tokens." },
+    { "key": "cmd", "label": "How it starts", "hint": "The command, and why each setting is there." },
+    { "key": "good", "label": "Why it's good enough", "hint": "Against which reference, on which golden set, at which load." },
+    { "key": "watch", "label": "When to look again", "hint": "What would make these numbers wrong, and what to watch." }
+  ],
+  "checks": [
+    "It names the exact model version and format (e.g. skerry-32b-fp8), its licence, and who cleared that licence",
+    "It shows the memory sum with units: budget, weights, overhead and KV cache, for 16 conversations of 16,384 tokens",
+    "It says why the KV cache is in FP8: in BF16 it wouldn't fit",
+    "It gives the full start-up command, with nothing left to defaults, including the served name and the tool flags",
+    "It says the weights are served from the image with HF_HUB_OFFLINE=1",
+    "It names the reference run (full precision, one conversation at a time) and the golden-set result: no case got worse",
+    "It gives the p95 time to first token at 16 conversations, against the 2 s target",
+    "It names the start-up log line to check: Maximum concurrency must stay at 16x or more",
+    "It says what would make it wrong: longer manuals, more users, a new model version, and that each one means re-running the golden set",
+    "250 words or fewer"
+  ]
+}
+</script>
+
+<p>The last check matters most. Numbers that were true in December won't stay true. If Torvik hires twenty more field engineers, or puts a longer manual in the prompt, the busy hour gets bigger and nothing on the server will warn anyone. Put the trigger in the memo, so they know when to run the sums again.</p>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Primary source · read next · 30 minutes</p>
+  <p>NVIDIA's <a href="https://developer.nvidia.com/blog/mastering-llm-techniques-inference-optimization/">"Mastering LLM Techniques: Inference Optimization"</a>. It's from 2023, and the ideas haven't changed: what fills GPU memory, why the KV cache grows, how batching, tensor parallelism and quantization trade memory for speed. Read it with today's <code>fit()</code> open and find each term in your sum. Then read vLLM's <a href="https://docs.vllm.ai/en/latest/configuration/engine_args/">engine arguments</a> to see how much has changed since: the defaults in that list are the ones your command overrides.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Stuck, or disagree?</strong> Ask in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a>, where other learners and people doing the job can answer. You can also paste this page into an AI assistant and ask it to quiz you on the parts you got wrong.</p>
+</div>
+
+<p class="small" id="up-next">That's the last lesson. You've followed one agent from the first discovery call at Acme to a GPU server behind Torvik's air gap. Next, write your own deployment story with the template in the <a href="../reference/fde-roadmap-map.html">roadmap reference</a>: a customer, a constraint you didn't choose, what you shipped, and the number that proved it. Then go back to <a href="0001-the-real-job-behind-the-roadmap.html">Lesson 1</a> and read the job ads again. They should read differently now.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>

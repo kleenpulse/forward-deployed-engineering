@@ -24,7 +24,7 @@ The course follows the 12 stages of [Suraj Sharma's FDE roadmap](https://x.com/s
 | 10 | Handoff and self-serve admin | 12 | ✅ |
 | 11 | PII guardrails (specialist) | 6 | ✅ |
 | 12 | Air-gapped and VPC deployment (specialist) | 2 | ✅ |
-| 13 | Edge and on-prem inference (specialist) | 8 | coming soon |
+| 13 | Edge and on-prem inference (specialist) | 8 | ✅ |
 
 ## Run it locally
 

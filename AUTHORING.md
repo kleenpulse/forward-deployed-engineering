@@ -30,7 +30,7 @@ The 12 stages come from [Suraj Sharma's FDE roadmap](https://x.com/suraj_sharma1
 | 10 | 12 · Handoff & self-serve admin | `lessons/0010-handoff-and-self-serve.html` | done |
 | 11 | 6 · PII guardrails (specialist) | `lessons/0011-pii-guardrails.html` | done |
 | 12 | 2 · Air-gapped & VPC deployment (specialist) | `lessons/0012-air-gapped-and-vpc.html` | done |
-| 13 | 8 · Edge & on-prem inference (specialist) | `lessons/0013-on-prem-inference.html` | planned |
+| 13 | 8 · Edge & on-prem inference (specialist) | `lessons/0013-on-prem-inference.html` | done |
 
 The syllabus in `index.html` mirrors this table. When a lesson ships, link it there and in the previous lesson's "Up next" line.
 
