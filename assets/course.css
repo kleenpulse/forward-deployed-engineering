@@ -254,6 +254,31 @@ tr.empty td { color: var(--muted); padding: 1.2rem 0; border-bottom: 0; }
 nav.course { font-family: var(--font-label); font-size: .8rem; display: flex; gap: 1.2rem; flex-wrap: wrap; align-items: center; margin-bottom: 2rem; color: var(--muted); }
 nav.course a { color: var(--muted); }
 
+/* ---------- Docked nav (nav-dock.js) ---------- */
+
+/* Once the nav scrolls away, it stacks in the left gutter (only when the gutter has room).
+   It sits right of the scroll ring's 72px column and level with the column's first line. */
+nav.course[data-docked] {
+  position: fixed; top: 3rem; left: 72px; z-index: 10; margin: 0;
+  flex-direction: column; flex-wrap: nowrap; align-items: flex-start; gap: .45rem;
+  font-family: var(--font-text); font-size: 1.1rem; font-weight: 600; line-height: 1.1;
+  letter-spacing: -.01em; text-transform: uppercase; white-space: nowrap;
+}
+nav.course[data-docked]::before {
+  content: "Navigation" / ""; margin-bottom: .2rem;
+  font-family: var(--font-label); font-size: .6rem; font-weight: 400; letter-spacing: .14em;
+  animation: nav-dock-label 400ms 200ms cubic-bezier(0, 0, .2, 1) backwards;
+}
+nav.course[data-docked] a { text-decoration: none; transition: color 150ms; }
+nav.course[data-docked] a:hover, nav.course[data-docked] a:focus-visible { color: var(--title); }
+nav.course[data-probe] { visibility: hidden; pointer-events: none; }
+@keyframes nav-dock-label { from { opacity: 0; translate: 0 4px; } }
+@keyframes nav-dock-fade { from { opacity: 0; } }
+/* Reduced motion: the label only fades, in step with the links (nav-dock.js). */
+@media (prefers-reduced-motion: reduce) {
+  nav.course[data-docked]::before { animation: nav-dock-fade 250ms ease-out backwards; }
+}
+
 /* ---------- Print ---------- */
 
 @media print {
