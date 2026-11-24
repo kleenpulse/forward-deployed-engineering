@@ -374,7 +374,8 @@ nav.course[data-probe] { visibility: hidden; pointer-events: none; }
 /* Pinned to the window's top-right corner, so it never wraps under long navs. */
 .theme-toggle {
   position: fixed; top: 1rem; right: 1.25rem; z-index: 10;
-  font: inherit; cursor: pointer; background: var(--paper); color: var(--muted);
+  /* Its own font, not inherited: it lives inside nav.course, which restyles itself when docked. */
+  font: 400 .8rem/1.55 var(--font-label); letter-spacing: normal; cursor: pointer; background: var(--paper); color: var(--muted);
   border: 1px solid var(--rule); border-radius: 999px; padding: .15rem .7rem;
 }
 .theme-toggle:hover { color: var(--title); border-color: var(--muted); }
