@@ -6,7 +6,7 @@ A free, open course for software engineers who want a Forward Deployed Engineer 
 
 The course follows the 12 stages of [Suraj Sharma's FDE roadmap](https://x.com/suraj_sharma14/status/2124827808535048566), checked against [an analysis of 1,000 real FDE job ads](https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/). It teaches the nine core stages first, in the order the job runs them, then the three specialist ones.
 
-- **13 lessons of about an hour each.** Each one teaches one stage, then makes you practise it with quizzes, sorting exercises, writing tasks and small code exercises with instant feedback.
+- **13 lessons of about an hour each, and a capstone.** Each lesson teaches one stage, then makes you practise it with quizzes, sorting exercises, writing tasks and small code exercises with instant feedback.
 - **No account, no API keys.** Answers save in your browser. Code exercises run with [Bun](https://bun.sh) and [PGlite](https://pglite.dev) (a real Postgres that runs inside the script).
 - **Every claim is cited.** Hover any dotted word for a plain-English definition, or search the [jargon decoder](https://kleenpulse.github.io/forward-deployed-engineering/reference/jargon.html).
 
@@ -25,6 +25,7 @@ The course follows the 12 stages of [Suraj Sharma's FDE roadmap](https://x.com/s
 | 11 | PII guardrails (specialist) | 6 | ✅ |
 | 12 | Air-gapped and VPC deployment (specialist) | 2 | ✅ |
 | 13 | Edge and on-prem inference (specialist) | 8 | ✅ |
+| Capstone | Your deployment stories | all | ✅ |
 
 ## Run it locally
 

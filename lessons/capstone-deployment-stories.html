@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capstone · Your deployment stories</title>
+<link rel="stylesheet" href="../assets/course.css">
+<link rel="icon" href="../assets/favicon.svg" type="image/svg+xml">
+<script src="../assets/theme.js"></script>
+<script src="../assets/scroll-ring.js" defer></script>
+<script src="../assets/scrollbar.js" defer></script>
+<script src="../assets/nav-dock.js" defer></script>
+</head>
+<body>
+<main>
+
+<nav class="course">
+  <a href="../index.html">Course index</a>
+  <a href="0013-on-prem-inference.html">← Lesson 13</a>
+  <a href="../reference/fde-roadmap-map.html">Roadmap reference</a>
+  <a href="../reference/jargon.html">Jargon decoder</a>
+</nav>
+
+<p class="kicker">Forward Deployed Engineering · Capstone · after Lesson 13 · about 60 minutes</p>
+<h1>Your deployment stories</h1>
+<p class="subtitle">You've followed one agent from a first call at Acme to a GPU server behind Torvik's air gap. None of that is your experience yet: Acme and Torvik are made up, and the exercises ran on your laptop. This page turns what you learned into something a hiring manager can check: your own work, told as deployment stories, with every claim backed up and nothing inflated.</p>
+<p class="small no-terms">Words with a dotted underline have a plain-English definition. Hover, tap or tab to them. All of them are in the <a href="../reference/jargon.html">jargon decoder</a>.</p>
+
+<div class="win">
+  <strong>Your win today</strong>
+  <p>A second, stricter map of your evidence, to compare with the one from Lesson 1. Your strongest project rewritten as a deployment story that names a constraint, a number, and one thing you chose not to do. And an answer ready for each follow-up question that story invites.</p>
+</div>
+
+<h2>1 · What the course gave you, and what it didn't</h2>
+
+<p>Each lesson ended with something built or written. Here is what each one lets you explain, and the stage it belongs to:</p>
+<table>
+  <thead><tr><th>Lesson</th><th>Stage</th><th>What you can now explain</th></tr></thead>
+  <tbody>
+    <tr><td><a href="0002-discovery-and-scoping.html">2</a></td><td>11</td><td>How a vague request becomes one success metric with a baseline, a scope, and a 4-week plan</td></tr>
+    <tr><td><a href="0003-enterprise-identity-for-agents.html">3</a></td><td>1</td><td>How a customer's staff sign in, how accounts come and go, and how the database stops an agent reading the wrong rows</td></tr>
+    <tr><td><a href="0004-permission-filtered-retrieval.html">4</a></td><td>4</td><td>Why permissions go before ranking in search, and how an answer cites its sources or abstains</td></tr>
+    <tr><td><a href="0005-mcp-and-legacy-integration.html">5</a></td><td>5</td><td>How to wrap an old system as a tool: clean fields, errors the model can act on, retries that know when to stop</td></tr>
+    <tr><td><a href="0006-legacy-data-and-etl.html">6</a></td><td>3</td><td>How to load messy exports without losing a cent or a character, and how to report what doesn't match</td></tr>
+    <tr><td><a href="0007-human-in-the-loop-workflows.html">7</a></td><td>7</td><td>How an agent waits for a person's approval for days, survives a crash, and never acts twice</td></tr>
+    <tr><td><a href="0008-evals-on-customer-data.html">8</a></td><td>10</td><td>How to prove a new version is no worse, case by case, and why an average can hide a broken case</td></tr>
+    <tr><td><a href="0009-telemetry-and-roi.html">9</a></td><td>9</td><td>What the agent costs per team, whether it moved the agreed metric, and how to notice a silent failure</td></tr>
+    <tr><td><a href="0010-handoff-and-self-serve.html">10</a></td><td>12</td><td>How the customer runs and changes the agent after you leave, safely</td></tr>
+    <tr><td><a href="0011-pii-guardrails.html">11</a></td><td>6</td><td>How personal data stays out of the model's input and the logs, and who may see it again</td></tr>
+    <tr><td><a href="0012-air-gapped-and-vpc.html">12</a></td><td>2</td><td>What changes when nothing may leave the customer's network, and how a release gets in safely</td></tr>
+    <tr><td><a href="0013-on-prem-inference.html">13</a></td><td>8</td><td>Whether a model may be used, whether it fits, how it's served, and whether a smaller version is still good enough</td></tr>
+  </tbody>
+</table>
+
+<p><strong>Now the honest part.</strong> Knowing how is not the same as having done it for a customer. The job ads in <a href="0001-the-real-job-behind-the-roadmap.html">Lesson 1</a> ask for people who have worked with customers: it's the most common duty in FDE ads, at 55%.<span class="sn-ref"></span><span class="sidenote numbered">Bloomberry, <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">"I analyzed 1,000 forward deployed engineer jobs"</a>. The same figure opens <a href="0002-discovery-and-scoping.html">Lesson 2</a>.</span> So use the course in two ways, and keep them apart:</p>
+<ul>
+  <li><strong>As practice you can point to.</strong> "In a practice exercise, I wrote a grader that blocks a release when one case regresses, even when the average goes up." That's true, and it's specific. Never let it sound like a deployment.</li>
+  <li><strong>As a lens on your real work.</strong> You've probably done parts of these stages before without the words for them: a login you had to fit into someone else's system, an export you had to clean, a change you had to roll back. The course gives you the words and the questions. Your stories come from your own work.</li>
+</ul>
+
+<h2>2 · Rate your evidence again</h2>
+
+<p>In Lesson 1 you rated your proof for each stage. Do it again now, without looking, then open Lesson 1 and compare. This map saves separately, so your first one is still there.</p>
+<p>Use the same three levels, with one stricter rule. A course exercise on its own is never <em>strong</em>: nobody else relied on it. It can lift a stage from <em>thin</em> to <em>partial</em>, especially if you publish your solution with notes in your own words.</p>
+<table>
+  <tbody>
+    <tr><td><span class="tag strong">strong</span></td><td>Real work that someone relied on, which you can show or explain in detail: a repo, a write-up with numbers, a feature you can demo.</td></tr>
+    <tr><td><span class="tag partial">partial</span></td><td>The idea at small scale, or in practice: your own app, an open-source change, or a course exercise you can explain line by line.</td></tr>
+    <tr><td><span class="tag thin">thin</span></td><td>Nothing you could show yet.</td></tr>
+  </tbody>
+</table>
+
+<script type="application/json" data-rate="cap-evidence">
+{
+  "levels": ["Strong", "Partial", "Thin"],
+  "items": [
+    { "short": "Stage 11 (discovery)", "label": "Stage 11 · Discovery & scoping", "detail": "Have you interviewed a client or user, turned what they said into a scoped plan with a metric, and said no to something?" },
+    { "short": "Stage 1 (identity)", "label": "Stage 1 · Enterprise identity & agent access", "detail": "SSO, users synced from a company directory, access enforced in the database." },
+    { "short": "Stage 4 (retrieval)", "label": "Stage 4 · Permission-filtered retrieval", "detail": "Search or RAG over real documents, with citations, showing each user only what they may see." },
+    { "short": "Stage 5 (integration)", "label": "Stage 5 · MCP & legacy integration", "detail": "A tool layer over an awkward system: errors, rate limits, retries." },
+    { "short": "Stage 3 (messy data)", "label": "Stage 3 · Legacy data & ETL", "detail": "Exports, encodings and spreadsheets that fight back, loaded exactly, with a report of what didn't match." },
+    { "short": "Stage 7 (workflows)", "label": "Stage 7 · Human-in-the-loop & durable workflows", "detail": "A step where a person approves; jobs that survive crashes and never act twice." },
+    { "short": "Stage 10 (evals)", "label": "Stage 10 · Evals on customer data", "detail": "A test set from real cases, graded case by case, that has blocked a release." },
+    { "short": "Stage 9 (telemetry)", "label": "Stage 9 · Telemetry, ROI & customer health", "detail": "Traces, cost, adoption; a number against a baseline." },
+    { "short": "Stage 12 (handoff)", "label": "Stage 12 · Handoff & self-serve admin", "detail": "A runbook or admin screen that let someone else run what you built." },
+    { "short": "Stage 6 (PII)", "label": "Stage 6 · PII guardrails", "detail": "Masking personal data before a model or a log sees it; an audit of who saw it again.", "core": false },
+    { "short": "Stage 2 (VPC)", "label": "Stage 2 · Air-gapped & VPC deployment", "detail": "Private networks, default-deny egress, releases into a closed network.", "core": false },
+    { "short": "Stage 8 (local inference)", "label": "Stage 8 · Edge & on-prem inference", "detail": "Sizing, serving and testing a model on hardware you control.", "core": false }
+  ]
+}
+</script>
+
+<p>Look at what moved. A stage that went from <em>thin</em> to <em>partial</em> through an exercise is a stage you can now talk about in detail. A stage that's <em>strong</em> because of real work is where your first story comes from.</p>
+
+<h2>3 · One story, told twice</h2>
+
+<p>Here is the course's own story, Torvik, told the way candidates often tell it, and then the way that holds up. (Torvik is made up, so this is only a model of the shape. Your story must be real.)</p>
+
+<div class="callout">
+  <p class="small"><strong>Weak</strong></p>
+  <p>I deployed an LLM agent on-prem for a defence company, using vLLM, Kubernetes and TypeScript. I optimized the model with quantization and built a secure update system. The client was really happy with the results.</p>
+</div>
+<p>Every sentence is about you or your tools. Nothing can be checked: not "on-prem", not "optimized", not "happy". The listener learns your stack and nothing about your judgement.</p>
+
+<div class="callout">
+  <p class="small"><strong>Strong</strong></p>
+  <p><strong>Customer and pain:</strong> Torvik's field engineers waited for answers buried in sonar manuals, and nothing was allowed to leave their network.<br>
+  <strong>Constraint:</strong> No internet on the inside, two 48 GB GPUs, and releases only on a disk their security officer carried across by hand.<br>
+  <strong>Shipped:</strong> An import gate that refuses any release the pinned key didn't sign, and a model server sized for 16 conversations at once.<br>
+  <strong>Measured:</strong> On their 12-case golden set, 11 cases passed every run, against 10 for the full-precision model, and no case got worse. The p95 time to first token was 1.35 s at the busiest hour, against a 2 s target.<br>
+  <strong>Not done:</strong> I turned down the cheaper 4-bit model. It got one bolt torque wrong in one run of three.</p>
+</div>
+<p>About 125 words. The pain comes before any technology. The constraint is something the customer chose, not you. "Shipped" is two sentences. The numbers come with what they were compared against. And the last line shows judgement: you gave up something cheaper because of one case that mattered. That line usually starts the best follow-up conversation.</p>
+
+<h2>4 · Strong line, or rewrite it?</h2>
+
+<p>Each card is one line from someone's deployment story. Decide whether it holds up as it is, or needs rewriting.</p>
+
+<script type="application/json" data-sort="cap-lines">
+{
+  "buckets": ["Strong: keep it", "Weak: rewrite it"],
+  "items": [
+    { "label": "\"We used Next.js, Postgres and LangChain.\"", "detail": "The opening line of the story.", "bucket": 1,
+      "why": "A stack list tells the listener nothing about the customer or your judgement. Start with who hurt and how. Mention a tool only where it explains a decision." },
+    { "label": "\"Support staff were copying order numbers between three systems, about 40 times a day.\"", "detail": "Customer and pain.", "bucket": 0,
+      "why": "The pain in the customer's terms, with a number someone could check. It also sets up your baseline (<a href=\"0002-discovery-and-scoping.html\">Lesson 2</a>)." },
+    { "label": "\"I improved the agent's accuracy a lot.\"", "detail": "Measured.", "bucket": 1,
+      "why": "No number, no baseline, no test set. Say what you measured it on and against what, e.g. \"pass^3 went from 10 of 12 to 11 of 12 on their golden set\" (<a href=\"0008-evals-on-customer-data.html\">Lesson 8</a>). If you didn't measure, say exactly what you would measure." },
+    { "label": "\"Their IT team wouldn't let us use a public model API, so the model ran in their own cloud account.\"", "detail": "Constraint.", "bucket": 0,
+      "why": "A real constraint, stated as a fact about the customer, not as a complaint, and it leads straight to a decision you made." },
+    { "label": "\"The client loved it.\"", "detail": "Measured.", "bucket": 1,
+      "why": "Feelings aren't evidence. What did they do? Kept using it (adoption), paid for more, or asked for the next workflow? Use the number (<a href=\"0009-telemetry-and-roi.html\">Lesson 9</a>)." },
+    { "label": "\"I chose not to fine-tune, because the eval showed retrieval was missing the right documents.\"", "detail": "Not done.", "bucket": 0,
+      "why": "A decision, a reason, and evidence for the reason. It shows you test before you build." },
+    { "label": "\"We were blocked by their security team for weeks.\"", "detail": "Constraint.", "bucket": 1,
+      "why": "It sounds like blame, and says nothing about what you did. Rewrite it as the constraint and your answer: \"Their security review needed every outbound connection listed, so I ran the agent with egress denied and wrote down what it tried to reach.\"" },
+    { "label": "\"Their staff change the prompt themselves now, and every change is a new version they can roll back.\"", "detail": "Shipped.", "bucket": 0,
+      "why": "It shows the work outlived you, which is what a handoff is for (<a href=\"0010-handoff-and-self-serve.html\">Lesson 10</a>)." }
+  ]
+}
+</script>
+
+<h2>5 · The questions your story invites</h2>
+
+<p>A careful listener doesn't stop at your story. Each part of it raises a question, and each question is a stage of this course. Check that you have an answer for each one about your own project, before anyone asks.</p>
+<table>
+  <thead><tr><th>Part of your story</th><th>The question behind it</th><th>Where the course prepared you</th></tr></thead>
+  <tbody>
+    <tr><td>Customer and pain</td><td>How did you find out what hurt, and what did you leave out of scope?</td><td><a href="0002-discovery-and-scoping.html">Lesson 2</a></td></tr>
+    <tr><td>Constraint</td><td>Who could see what, and how did you enforce it?</td><td><a href="0003-enterprise-identity-for-agents.html">3</a>, <a href="0004-permission-filtered-retrieval.html">4</a>, <a href="0011-pii-guardrails.html">11</a></td></tr>
+    <tr><td>Shipped</td><td>What happens when the old system fails, or the agent crashes halfway through?</td><td><a href="0005-mcp-and-legacy-integration.html">5</a>, <a href="0006-legacy-data-and-etl.html">6</a>, <a href="0007-human-in-the-loop-workflows.html">7</a></td></tr>
+    <tr><td>Measured</td><td>How do you know it wasn't luck? What did it cost to run?</td><td><a href="0008-evals-on-customer-data.html">8</a>, <a href="0009-telemetry-and-roi.html">9</a></td></tr>
+    <tr><td>After you left</td><td>Who runs it now, and what do they do at 3 a.m.?</td><td><a href="0010-handoff-and-self-serve.html">10</a></td></tr>
+    <tr><td>Not done</td><td>What would you do differently with more time?</td><td>All of them: the honest answer names the gap you know about</td></tr>
+  </tbody>
+</table>
+<p>You won't have a great answer to all of them. That's normal, and saying so plainly is better than inventing one. "We never measured cost per team; next time I'd tag every model call with the team from the start" is a good answer. It shows you know what was missing.</p>
+
+<h2>6 · Write your story</h2>
+
+<p>Take the stage you rated strongest in section 2, and the real project behind it. Write it the way the strong Torvik example is written. Then write the follow-up you most hope nobody asks, and answer it. It saves in your browser as you type.</p>
+
+<script type="application/json" data-practice="cap-story">
+{
+  "title": "My deployment story",
+  "maxWords": 170,
+  "fields": [
+    { "key": "customer", "label": "Customer and pain", "hint": "Who, and what hurt, in their words. No technology yet." },
+    { "key": "constraint", "label": "A constraint you didn't choose", "hint": "Their systems, rules, data, team, deadline, or a provider's limit." },
+    { "key": "shipped", "label": "What you shipped", "hint": "Two sentences or fewer. Tools only where they explain a decision." },
+    { "key": "measured", "label": "How you measured it", "hint": "A number with what it was compared against. Or exactly what you would measure." },
+    { "key": "notdone", "label": "What you chose not to do, and why", "hint": "The decision that shows your judgement." },
+    { "key": "followup", "label": "The follow-up you dread, and your answer", "hint": "Pick one from section 5. Answer it honestly, gaps included." }
+  ],
+  "checks": [
+    "It's my own real work, and every claim in it is true as written",
+    "The customer and their pain come before any technology",
+    "The constraint is something someone else decided, stated as a fact, not a complaint",
+    "\"Shipped\" is two sentences or fewer, with no stack list",
+    "\"Measured\" has a number and what it was compared against, or names the exact metric I'd track",
+    "\"Not done\" names a real alternative and a reason backed by evidence",
+    "If any part comes from a course exercise, it says so",
+    "The follow-up answer admits a gap where there is one, and says what I'd do about it",
+    "170 words or fewer"
+  ]
+}
+</script>
+
+<p>When you have one, press <strong>Copy as Markdown</strong> and keep it with your interview notes. Then do it again for the stage you rated second strongest. Two or three stories from different stages cover most of the job ads you'll read.</p>
+
+<h2>7 · Check yourself</h2>
+
+<p>The last quiz of the course. It mixes how to tell a story with some of the lessons that will back it up.</p>
+
+<script type="application/json" data-quiz="cap-recall">
+{
+  "questions": [
+    { "q": "You have no number for the \"Measured\" part of a real project. What do you say?",
+      "options": ["Estimate a number that sounds right", "Leave the measured part out entirely", "Name the exact metric you'd track", "Say the client was very happy"],
+      "answer": 2,
+      "why": "Lesson 1's worked example has the same gap, and the honest fix is to name what you would measure, e.g. \"sign-out complaints per week, before and after\". An invented number falls apart at the first follow-up." },
+    { "q": "You built this course's eval grader. How do you mention it in an interview?",
+      "options": ["As a customer deployment", "As exactly described practice", "Never: it's not real", "As a team project"],
+      "answer": 1,
+      "why": "It's real practice, and specific practice is worth mentioning: \"In a practice exercise, I wrote a grader that blocks a release when one case regresses.\" Acme was never a customer, so never let it sound like one." },
+    { "q": "Which line belongs in the \"Constraint\" part of a story?",
+      "options": ["We chose TypeScript and Postgres", "Their network had no internet", "I wanted to learn Kubernetes", "The demo went really well"],
+      "answer": 1,
+      "why": "A constraint is something the customer's world imposed on you. Your own tool choices and wishes aren't constraints, and a demo going well is a result, not a constraint." },
+    { "q": "From Lesson 8: a new version raises the average score, but one case that always passed now fails once. Ship it?",
+      "options": ["No: that case has regressed", "Yes: the average went up", "Yes, then fix it later", "Only if the customer agrees"],
+      "answer": 0,
+      "why": "A case that passed every run before and fails any run now is a regression, whatever the average says. Lesson 13 caught the same thing on a model: one wrong torque value." },
+    { "q": "From Lesson 4: why must permission filtering happen before ranking, not after?",
+      "options": ["It makes the search too slow", "The model ignores its citations then", "Ranking breaks on the filtered rows", "It leaks rows and starves results"],
+      "answer": 3,
+      "why": "Two failures (<a href=\"0004-permission-filtered-retrieval.html\">Lesson 4</a>). It leaks: forbidden rows leave the database and can end up in logs, traces and caches before the filter runs. And it starves: the top results can all be forbidden, so the permitted answer never makes the top few." },
+    { "q": "From Lesson 12: a release bundle brings its own public key, and its signature checks out with that key. What does that prove?",
+      "options": ["The vendor really built it", "Nothing about who sent it", "The files are all intact", "That it's the newest version"],
+      "answer": 1,
+      "why": "Whoever made the disk chose the key. Only a key installed beforehand, through a separate channel, proves who signed the release." },
+    { "q": "From Lesson 13: what usually takes more GPU memory when 16 people use a 32B model at once?",
+      "options": ["The tokenizer files", "The FP8 weights", "The KV cache", "The server's logs"],
+      "answer": 2,
+      "why": "For 16 conversations of 16,384 tokens, the BF16 KV cache needs about 68.7 GB, more than the 33.4 GB of FP8 weights. Sizings that count only weights fail at the busy hour." },
+    { "q": "Which \"Not done\" line shows the most judgement?",
+      "options": ["We ran out of time for tests", "I skipped 4-bit: one wrong torque value", "We didn't have the budget for more", "I didn't like the old framework much"],
+      "answer": 1,
+      "why": "It names a real alternative, the reason, and the evidence behind the reason. The others are things that happened to you, or a preference." }
+  ]
+}
+</script>
+
+<hr>
+
+<div class="callout">
+  <p class="kicker">Read next · 30 minutes</p>
+  <p>Three live FDE job ads, from companies you'd want to work for. For each requirement in each ad, write the stage it belongs to and the story of yours that answers it. Leave a gap where you have no story. Then read Henley Wing Chiu's <a href="https://bloomberry.com/blog/i-analyzed-1000-forward-deployed-engineer-jobs-what-i-learned/">analysis of 1,000 FDE ads</a> again, the one Lesson 1 started from, and see how differently it reads now. The gaps you find are your next projects.</p>
+</div>
+
+<div class="ask">
+  <p><strong>Want feedback on your story?</strong> Post it in the course's <a href="https://github.com/kleenpulse/forward-deployed-engineering/discussions">GitHub Discussions</a> and ask for the follow-up questions a hiring manager would ask. Other learners and people doing the job can answer. You can also paste your story into an AI assistant and ask it to play a sceptical interviewer.</p>
+</div>
+
+<p class="small">That's the end of the course. Thank you for working through it. If something in a lesson was wrong, out of date or unclear, open an issue or a pull request on the <a href="https://github.com/kleenpulse/forward-deployed-engineering">course repo</a>, with the source that shows it.</p>
+
+</main>
+<script src="../assets/quiz.js"></script>
+<script src="../assets/sort.js"></script>
+<script src="../assets/practice.js"></script>
+<script src="../assets/rate.js"></script>
+<script src="../assets/terms.js"></script>
+<script src="../assets/tooltip.js"></script>
+</body>
+</html>
